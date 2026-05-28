@@ -6,11 +6,8 @@
     <title>Цветашки (Colorlets)</title>
     <style>
         :root {
-            --bg: #f8f9fa;
-            --text: #212529;
-            --shadow: 0 4px 10px rgba(0,0,0,0.12);
-            --correct: #4caf50;
-            --wrong: #f44336;
+            --bg: #f8f9fa; --text: #212529; --shadow: 0 4px 10px rgba(0,0,0,0.12);
+            --correct: #4caf50; --wrong: #f44336;
         }
         body {
             margin: 0; padding: 0;
@@ -20,6 +17,7 @@
             align-items: center; justify-content: center;
             height: 100vh; overflow: hidden;
             user-select: none; touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
         }
         .screen {
             position: absolute; inset: 0;
@@ -34,14 +32,13 @@
             padding: 14px 36px; font-size: 1.4rem;
             background: #2563eb; color: white; border: none;
             border-radius: 50px; cursor: pointer; box-shadow: 0 4px 12px rgba(37,99,235,0.3);
-            transition: transform 0.1s;
+            transition: transform 0.1s; -webkit-tap-highlight-color: transparent;
         }
         button:active { transform: scale(0.95); }
 
         #task-text {
             font-size: 2.2rem; font-weight: 700; margin-bottom: 20px;
-            text-align: center; min-height: 56px;
-            transition: color 0.2s;
+            text-align: center; min-height: 56px; transition: color 0.2s;
             animation: gentle-pulse 2.5s infinite ease-in-out;
         }
         @keyframes gentle-pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.02)} }
@@ -53,7 +50,8 @@
         .card {
             background: #fff; border-radius: 20px; box-shadow: var(--shadow);
             cursor: pointer; border: 4px solid transparent;
-            transition: transform 0.15s;
+            transition: transform 0.12s; -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
         }
         .card:active { transform: scale(0.93); }
         @keyframes shake { 0%{transform:translateX(0)} 25%{transform:translateX(-8px)} 50%{transform:translateX(8px)} 75%{transform:translateX(-8px)} 100%{transform:translateX(0)} }
@@ -61,16 +59,9 @@
         .wrong { animation: shake 0.4s ease; border-color: var(--wrong); }
         .correct { animation: pop 0.4s ease; border-color: var(--correct); }
 
-        .progress-dots {
-            display: flex; gap: 8px; justify-content: center;
-            margin-top: 16px; flex-wrap: wrap;
-        }
-        .dot {
-            width: 18px; height: 18px; border-radius: 50%;
-            background: #e2e8f0; border: 2px solid #cbd5e1;
-            transition: all 0.3s ease;
-        }
-        .dot.found { transform: scale(1.1); border-color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+        .progress-dots { display: flex; gap: 8px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
+        .dot { width: 18px; height: 18px; border-radius: 50%; background: #e2e8f0; border: 2px solid #cbd5e1; transition: all 0.3s ease; }
+        .dot.found { transform: scale(1.15); border-color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
 
         #win-screen h1 { color: #16a34a; font-size: 2.5rem; }
         .confetti { font-size: 3.5rem; margin: 15px; }
@@ -101,9 +92,6 @@
     </div>
 
     <script>
-        // ==========================================
-        // КОНФИГ (цвета, коды, подсказки)
-        // ==========================================
         const CONFIG = [
             { name: "Красный",   hex: "#E53935", hints: ["как помидор", "как клубничка", "как божья коровка"] },
             { name: "Синий",     hex: "#1E88E5", hints: ["как небо", "как море", "как ручеёк"] },
@@ -115,14 +103,25 @@
             { name: "Белый",     hex: "#F5F5F5", hints: ["как снежок", "как молочко", "как зайчик"] },
             { name: "Розовый",   hex: "#EC407A", hints: ["как свинка", "как цветочек", "как фламинго"] }
         ];
-        // ==========================================
 
-        let target = null;
-        let locked = false;
-        let found = new Set();
-        let timer = null;
-        let synth = window.speechSynthesis;
-        let voice = null;
+        let target = null, isProcessing = false, found = new Set(), timer = null, stateTimer = null;
+        let synth = window.speechSynthesis, voice = null;
+
+        // 🔐 Надёжный блокировщик состояния
+        function lock(duration, onUnlock) {
+            unlock();
+            isProcessing = true;
+            stateTimer = setTimeout(() => {
+                isProcessing = false;
+                if (onUnlock) onUnlock();
+            }, duration);
+        }
+
+        function unlock() {
+            if (stateTimer) clearTimeout(stateTimer);
+            stateTimer = null;
+            isProcessing = false;
+        }
 
         function initVoice() {
             const v = synth.getVoices();
@@ -130,19 +129,21 @@
         }
         if (synth.onvoiceschanged !== undefined) synth.onvoiceschanged = initVoice;
 
-        function speak(text, onEnd) {
-            synth.cancel();
-            const u = new SpeechSynthesisUtterance(text);
-            if (voice) u.voice = voice;
-            u.lang = 'ru-RU'; u.rate = 0.85; u.pitch = 1.1;
-            u.onend = onEnd || (() => {});
-            synth.speak(u);
+        // 🔊 Безопасная обёртка для TTS (не ломает игру, если голос зависнет)
+        function speak(text) {
+            try {
+                if (synth.speaking) synth.cancel();
+                const u = new SpeechSynthesisUtterance(text);
+                if (voice) u.voice = voice;
+                u.lang = 'ru-RU'; u.rate = 0.85; u.pitch = 1.1;
+                synth.speak(u);
+            } catch (e) { console.warn('TTS error:', e); }
         }
 
         function startRepeat() {
             stopRepeat();
             timer = setInterval(() => {
-                if (!locked && target) speak("Выбери " + target.name);
+                if (!isProcessing && target) speak("Выбери " + target.name);
             }, 6000);
         }
         function stopRepeat() { clearInterval(timer); }
@@ -156,17 +157,14 @@
         }
 
         function startGame() {
-            initVoice();
-            found.clear();
+            initVoice(); found.clear();
             document.getElementById('start-screen').classList.add('hidden');
             document.getElementById('game-screen').classList.remove('hidden');
-            buildDots();
-            nextRound();
+            buildDots(); nextRound();
         }
 
         function buildDots() {
-            const box = document.getElementById('dots');
-            box.innerHTML = '';
+            const box = document.getElementById('dots'); box.innerHTML = '';
             CONFIG.forEach(c => {
                 const d = document.createElement('div');
                 d.className = 'dot'; d.style.backgroundColor = c.hex;
@@ -177,14 +175,12 @@
 
         function updateProgress() {
             const dots = document.querySelectorAll('.dot');
-            CONFIG.forEach((c, i) => {
-                dots[i].classList.toggle('found', found.has(c.name));
-            });
+            CONFIG.forEach((c, i) => dots[i].classList.toggle('found', found.has(c.name)));
             document.getElementById('progress-label').innerText = `Найдено: ${found.size} / ${CONFIG.length}`;
         }
 
         function nextRound() {
-            locked = false; stopRepeat();
+            unlock(); stopRepeat();
             if (found.size === CONFIG.length) { showWin(); return; }
 
             const pool = shuffle([...CONFIG]).slice(0, 4);
@@ -197,59 +193,53 @@
                 const el = document.getElementById('task-text');
                 el.innerText = txt;
                 el.style.color = ['Белый','Желтый','Розовый'].includes(target.name) ? '#212529' : target.hex;
-                speak(txt, startRepeat);
-            }, 400);
+                speak(txt);
+                startRepeat();
+            }, 300);
         }
 
         function renderGrid(colors) {
-            const grid = document.getElementById('grid');
-            grid.innerHTML = '';
+            const grid = document.getElementById('grid'); grid.innerHTML = '';
             shuffle([...colors]).forEach(c => {
                 const card = document.createElement('div');
                 card.className = 'card';
                 card.style.backgroundColor = c.hex;
                 if (c.name === 'Белый') card.style.border = '2px solid #ddd';
-                card.onclick = () => tap(card, c);
+                card.onclick = (e) => { e.preventDefault(); tap(card, c); };
                 grid.appendChild(card);
             });
         }
 
         function tap(card, clicked) {
-            if (locked) return;
+            if (isProcessing) return;
             stopRepeat();
 
             if (clicked.name === target.name) {
-                locked = true;
                 card.classList.add('correct');
-                const wasNew = !found.has(clicked.name);
-                found.add(clicked.name);
-                updateProgress();
-
-                const praise = ["Молодец!", "Правильно!", "Умница!", "Супер!"][Math.floor(Math.random()*4)];
-                if (found.size === CONFIG.length) {
-                    speak(praise, () => setTimeout(showWin, 600));
-                } else {
-                    speak(praise, () => setTimeout(nextRound, 800));
+                if (!found.has(clicked.name)) {
+                    found.add(clicked.name);
+                    updateProgress();
                 }
+                speak(["Молодец!", "Правильно!", "Умница!", "Супер!"][Math.floor(Math.random()*4)]);
+                // Блокируем на 800мс, потом запускаем следующий раунд
+                lock(800, () => nextRound());
             } else {
-                locked = true;
                 card.classList.add('wrong');
                 setTimeout(() => card.classList.remove('wrong'), 400);
-
                 const h1 = clicked.hints[Math.floor(Math.random()*clicked.hints.length)];
                 const h2 = target.hints[Math.floor(Math.random()*target.hints.length)];
-                const msg = `Это ${clicked.name}, ${h1}. А нам нужен ${target.name}, ${h2}.`;
-                speak(msg, () => { locked = false; startRepeat(); });
+                speak(`Это ${clicked.name}, ${h1}. А нам нужен ${target.name}, ${h2}.`);
+                // Блокируем на 600мс, потом возобновляем повтор задания
+                lock(600, startRepeat);
             }
         }
 
         function showWin() {
-            locked = true; stopRepeat();
+            unlock(); stopRepeat();
             document.getElementById('game-screen').classList.add('hidden');
             document.getElementById('win-screen').classList.remove('hidden');
             speak("Поздравляю! Ты нашла все цвета!");
             
-            // Конфетти
             const emojis = ['⭐','🎈','🎉','🍭','🌈'];
             setInterval(() => {
                 const el = document.createElement('div');
