@@ -3,321 +3,262 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Учим Цвета</title>
+    <title>Цветашки (Colorlets)</title>
     <style>
         :root {
-            --bg-color: #f0f4f8;
-            --text-color: #333;
-            --card-shadow: 0 4px 8px rgba(0,0,0,0.12);
-            --correct-anim: #4caf50;
-            --wrong-anim: #f44336;
+            --bg: #f8f9fa;
+            --text: #212529;
+            --shadow: 0 4px 10px rgba(0,0,0,0.12);
+            --correct: #4caf50;
+            --wrong: #f44336;
         }
-
         body {
-            margin: 0;
-            padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--bg-color);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            overflow: hidden;
-            user-select: none;
-            touch-action: manipulation;
+            margin: 0; padding: 0;
+            font-family: -apple-system, system-ui, sans-serif;
+            background: var(--bg);
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            height: 100vh; overflow: hidden;
+            user-select: none; touch-action: manipulation;
         }
-
-        #start-screen, #game-screen, #win-screen {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            position: absolute;
-            top: 0; left: 0;
+        .screen {
+            position: absolute; inset: 0;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
             transition: opacity 0.3s ease;
         }
-
         .hidden { display: none !important; }
-
-        h1 { color: var(--text-color); text-align: center; margin-bottom: 20px; font-size: 2rem; }
-        p { font-size: 1.2rem; color: #666; text-align: center; max-width: 80%; margin: 0 0 20px 0; }
-
-        button.start-btn {
-            padding: 15px 40px;
-            font-size: 1.5rem;
-            background-color: #2196F3;
-            color: white;
-            border: none;
-            border-radius: 50px;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(33, 150, 243, 0.4);
+        h1 { color: var(--text); margin: 0 0 10px; text-align: center; font-size: 2rem; }
+        p { color: #555; margin: 0 0 20px; text-align: center; max-width: 80%; }
+        button {
+            padding: 14px 36px; font-size: 1.4rem;
+            background: #2563eb; color: white; border: none;
+            border-radius: 50px; cursor: pointer; box-shadow: 0 4px 12px rgba(37,99,235,0.3);
             transition: transform 0.1s;
         }
-        button.start-btn:active { transform: scale(0.95); }
+        button:active { transform: scale(0.95); }
 
         #task-text {
-            font-size: 2.5rem;
-            font-weight: bold;
-            margin-bottom: 25px;
-            color: var(--text-color);
-            min-height: 60px;
-            text-align: center;
-            transition: color 0.3s;
-            animation: pulse-text 2s infinite ease-in-out;
+            font-size: 2.2rem; font-weight: 700; margin-bottom: 20px;
+            text-align: center; min-height: 56px;
+            transition: color 0.2s;
+            animation: gentle-pulse 2.5s infinite ease-in-out;
         }
-        @keyframes pulse-text {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.03); }
-        }
+        @keyframes gentle-pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.02)} }
 
-        .grid-container {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            width: 85vw;
-            max-width: 380px;
-            aspect-ratio: 1 / 1;
+        .grid {
+            display: grid; grid-template-columns: 1fr 1fr;
+            gap: 16px; width: 85vw; max-width: 360px; aspect-ratio: 1/1;
         }
-
-        .color-card {
-            background-color: white;
-            border-radius: 24px;
-            box-shadow: var(--card-shadow);
-            cursor: pointer;
+        .card {
+            background: #fff; border-radius: 20px; box-shadow: var(--shadow);
+            cursor: pointer; border: 4px solid transparent;
             transition: transform 0.15s;
-            position: relative;
-            border: 4px solid transparent;
         }
-        .color-card:active { transform: scale(0.92); }
+        .card:active { transform: scale(0.93); }
+        @keyframes shake { 0%{transform:translateX(0)} 25%{transform:translateX(-8px)} 50%{transform:translateX(8px)} 75%{transform:translateX(-8px)} 100%{transform:translateX(0)} }
+        @keyframes pop { 0%{transform:scale(1)} 50%{transform:scale(1.1)} 100%{transform:scale(1)} }
+        .wrong { animation: shake 0.4s ease; border-color: var(--wrong); }
+        .correct { animation: pop 0.4s ease; border-color: var(--correct); }
 
-        @keyframes shake {
-            0% { transform: translateX(0); } 25% { transform: translateX(-10px); }
-            50% { transform: translateX(10px); } 75% { transform: translateX(-10px); } 100% { transform: translateX(0); }
+        .progress-dots {
+            display: flex; gap: 8px; justify-content: center;
+            margin-top: 16px; flex-wrap: wrap;
         }
-        @keyframes pop {
-            0% { transform: scale(1); } 50% { transform: scale(1.12); } 100% { transform: scale(1); }
+        .dot {
+            width: 18px; height: 18px; border-radius: 50%;
+            background: #e2e8f0; border: 2px solid #cbd5e1;
+            transition: all 0.3s ease;
         }
-        .wrong { animation: shake 0.4s ease-in-out; border-color: var(--wrong-anim); }
-        .correct { animation: pop 0.4s ease-in-out; border-color: var(--correct-anim); }
+        .dot.found { transform: scale(1.1); border-color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
 
-        #win-screen h1 { color: #4caf50; font-size: 2.8rem; }
-        .confetti { font-size: 4rem; margin: 20px; }
-        .progress { font-size: 1rem; color: #888; margin-top: 10px; }
+        #win-screen h1 { color: #16a34a; font-size: 2.5rem; }
+        .confetti { font-size: 3.5rem; margin: 15px; }
+        .subtext { font-size: 0.95rem; color: #777; margin-top: 5px; }
     </style>
 </head>
 <body>
 
-    <div id="start-screen">
-        <h1>Учим Цвета 🎨</h1>
+    <div id="start-screen" class="screen">
+        <h1>🎨 Цветашки</h1>
         <p>Нажми кнопку, чтобы начать игру.</p>
-        <button class="start-btn" onclick="startGame()">Играть</button>
+        <button onclick="startGame()">Играть</button>
     </div>
 
-    <div id="game-screen" class="hidden">
+    <div id="game-screen" class="screen hidden">
         <div id="task-text">Выбери цвет...</div>
-        <div class="grid-container" id="grid"></div>
-        <div class="progress" id="progress-text"></div>
+        <div class="grid" id="grid"></div>
+        <div class="progress-dots" id="dots"></div>
+        <div class="subtext" id="progress-label">Найдено: 0 / 0</div>
     </div>
 
-    <div id="win-screen" class="hidden">
+    <div id="win-screen" class="screen hidden">
         <div class="confetti">🎉 ⭐ 🏆</div>
         <h1>Молодец!</h1>
         <p>Ты нашла все цвета!</p>
         <br>
-        <button class="start-btn" onclick="location.reload()">Ещё раз</button>
+        <button onclick="location.reload()">Ещё раз</button>
     </div>
 
     <script>
         // ==========================================
-        // КОНФИГУРАЦИЯ (добавляйте/меняйте цвета здесь)
-        // Логика игры автоматически подстроится под любое количество цветов.
+        // КОНФИГ (цвета, коды, подсказки)
         // ==========================================
-        const COLORS_CONFIG = [
-            { name: "Красный",   hex: "#EF5350", hints: ["как помидорка", "как ягодка", "как машинка"] },
-            { name: "Синий",     hex: "#42A5F5", hints: ["как небо", "как море", "как черничка"] },
-            { name: "Зеленый",   hex: "#66BB6A", hints: ["как травка", "как листик", "как лягушка"] },
-            { name: "Желтый",    hex: "#FFCA28", hints: ["как солнышко", "как цыплёнок", "как банан"] },
-            { name: "Оранжевый", hex: "#FFA726", hints: ["как апельсин", "как морковка", "как тыковка"] },
-            { name: "Фиолетовый",hex: "#9C27B0", hints: ["как фиалка", "как слива", "как виноград"] },
-            { name: "Черный",    hex: "#303030", hints: ["как ночка", "как жучок", "как шоколадка"] },
-            { name: "Белый",     hex: "#FAFAFA", hints: ["как снежок", "как молочко", "как облачко"] },
-            { name: "Розовый",   hex: "#F06292", hints: ["как свинка", "как цветочек", "как леденец"] } 
-            // Просто добавьте новую строку в этот массив, и игра сразу начнёт использовать новый цвет.
+        const CONFIG = [
+            { name: "Красный",   hex: "#E53935", hints: ["как помидор", "как клубничка", "как божья коровка"] },
+            { name: "Синий",     hex: "#1E88E5", hints: ["как небо", "как море", "как ручеёк"] },
+            { name: "Зеленый",   hex: "#43A047", hints: ["как травка", "как ёлочка", "как лягушка"] },
+            { name: "Желтый",    hex: "#FFD600", hints: ["как солнышко", "как цыплёнок", "как банан"] },
+            { name: "Оранжевый", hex: "#FB8C00", hints: ["как апельсин", "как морковка", "как лисичка"] },
+            { name: "Фиолетовый",hex: "#8E24AA", hints: ["как виноград", "как слива", "как фиалка"] },
+            { name: "Черный",    hex: "#263238", hints: ["как ночка", "как жучок", "как шляпка"] },
+            { name: "Белый",     hex: "#F5F5F5", hints: ["как снежок", "как молочко", "как зайчик"] },
+            { name: "Розовый",   hex: "#EC407A", hints: ["как свинка", "как цветочек", "как фламинго"] }
         ];
         // ==========================================
 
-        let targetColor = null;
-        let isProcessing = false;
-        let foundColors = new Set();
-        let promptRepeatTimer = null;
+        let target = null;
+        let locked = false;
+        let found = new Set();
+        let timer = null;
         let synth = window.speechSynthesis;
         let voice = null;
 
-        // Инициализация голоса
         function initVoice() {
-            const voices = synth.getVoices();
-            voice = voices.find(v => v.lang.includes('ru')) || voices[0];
+            const v = synth.getVoices();
+            voice = v.find(x => x.lang.includes('ru')) || v[0];
         }
-        if (speechSynthesis.onvoiceschanged !== undefined) speechSynthesis.onvoiceschanged = initVoice;
+        if (synth.onvoiceschanged !== undefined) synth.onvoiceschanged = initVoice;
 
-        // Озвучивание с колбэком на окончание
-        function speak(text, onEndCallback) {
-            if (synth.speaking) synth.cancel();
-            const utterance = new SpeechSynthesisUtterance(text);
-            if (voice) utterance.voice = voice;
-            utterance.lang = 'ru-RU';
-            utterance.rate = 0.85;
-            utterance.pitch = 1.1;
-            utterance.onend = () => { if (onEndCallback) onEndCallback(); };
-            synth.speak(utterance);
+        function speak(text, onEnd) {
+            synth.cancel();
+            const u = new SpeechSynthesisUtterance(text);
+            if (voice) u.voice = voice;
+            u.lang = 'ru-RU'; u.rate = 0.85; u.pitch = 1.1;
+            u.onend = onEnd || (() => {});
+            synth.speak(u);
         }
 
-        // Таймер повтора подсказки
-        function startPromptRepeat() {
-            stopPromptRepeat();
-            promptRepeatTimer = setInterval(() => {
-                if (targetColor && !isProcessing) {
-                    speak("Выбери " + targetColor.name);
-                }
-            }, 6000); // Повтор каждые 6 секунд
+        function startRepeat() {
+            stopRepeat();
+            timer = setInterval(() => {
+                if (!locked && target) speak("Выбери " + target.name);
+            }, 6000);
         }
-        function stopPromptRepeat() {
-            if (promptRepeatTimer) clearInterval(promptRepeatTimer);
-        }
+        function stopRepeat() { clearInterval(timer); }
 
-        function shuffle(array) {
-            for (let i = array.length - 1; i > 0; i--) {
+        function shuffle(a) {
+            for (let i = a.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
-                [array[i], array[j]] = [array[j], array[i]];
+                [a[i], a[j]] = [a[j], a[i]];
             }
-            return array;
+            return a;
         }
 
         function startGame() {
             initVoice();
-            foundColors.clear();
+            found.clear();
             document.getElementById('start-screen').classList.add('hidden');
             document.getElementById('game-screen').classList.remove('hidden');
-            updateProgress();
+            buildDots();
             nextRound();
         }
 
+        function buildDots() {
+            const box = document.getElementById('dots');
+            box.innerHTML = '';
+            CONFIG.forEach(c => {
+                const d = document.createElement('div');
+                d.className = 'dot'; d.style.backgroundColor = c.hex;
+                if (c.name === 'Белый') d.style.border = '2px solid #ccc';
+                box.appendChild(d);
+            });
+        }
+
         function updateProgress() {
-            document.getElementById('progress-text').innerText = `Найдено: ${foundColors.size} / ${COLORS_CONFIG.length}`;
+            const dots = document.querySelectorAll('.dot');
+            CONFIG.forEach((c, i) => {
+                dots[i].classList.toggle('found', found.has(c.name));
+            });
+            document.getElementById('progress-label').innerText = `Найдено: ${found.size} / ${CONFIG.length}`;
         }
 
         function nextRound() {
-            isProcessing = false;
-            stopPromptRepeat();
+            locked = false; stopRepeat();
+            if (found.size === CONFIG.length) { showWin(); return; }
 
-            // Проверка победы
-            if (foundColors.size >= COLORS_CONFIG.length) {
-                showWin();
-                return;
-            }
+            const pool = shuffle([...CONFIG]).slice(0, 4);
+            target = pool[Math.floor(Math.random() * pool.length)];
+            renderGrid(pool);
 
-            // Выбираем 4 случайных цвета
-            const roundColors = shuffle([...COLORS_CONFIG]).slice(0, 4);
-            // Выбираем целевой
-            targetColor = roundColors[Math.floor(Math.random() * roundColors.length)];
-
-            renderGrid(roundColors);
-
-            // Озвучиваем задание
             setTimeout(() => {
-                const phrases = ["Выбери " + targetColor.name, "Где " + targetColor.name + "?", "Покажи " + targetColor.name];
-                const phrase = phrases[Math.floor(Math.random() * phrases.length)];
-                
-                const taskEl = document.getElementById('task-text');
-                taskEl.innerText = phrase;
-                // Контрастный цвет текста для светлых/тёмных фонов
-                const darkColors = ["Белый", "Желтый", "Розовый"];
-                taskEl.style.color = darkColors.includes(targetColor.name) ? '#333' : targetColor.hex;
-                
-                speak(phrase, () => startPromptRepeat());
+                const phrases = ["Выбери " + target.name, "Где " + target.name + "?", "Покажи " + target.name];
+                const txt = phrases[Math.floor(Math.random() * phrases.length)];
+                const el = document.getElementById('task-text');
+                el.innerText = txt;
+                el.style.color = ['Белый','Желтый','Розовый'].includes(target.name) ? '#212529' : target.hex;
+                speak(txt, startRepeat);
             }, 400);
         }
 
         function renderGrid(colors) {
             const grid = document.getElementById('grid');
             grid.innerHTML = '';
-            const gridColors = shuffle([...colors]);
-
-            gridColors.forEach(color => {
+            shuffle([...colors]).forEach(c => {
                 const card = document.createElement('div');
-                card.className = 'color-card';
-                card.style.backgroundColor = color.hex;
-                if (color.name === "Белый") card.style.border = "2px solid #ddd";
-                
-                card.onclick = () => handleCardClick(card, color);
+                card.className = 'card';
+                card.style.backgroundColor = c.hex;
+                if (c.name === 'Белый') card.style.border = '2px solid #ddd';
+                card.onclick = () => tap(card, c);
                 grid.appendChild(card);
             });
         }
 
-        function handleCardClick(cardElement, clickedColor) {
-            if (isProcessing) return;
-            stopPromptRepeat(); // Останавливаем повтор при клике
+        function tap(card, clicked) {
+            if (locked) return;
+            stopRepeat();
 
-            if (clickedColor.name === targetColor.name) {
-                // ПРАВИЛЬНО
-                isProcessing = true;
-                cardElement.classList.add('correct');
-                
-                if (!foundColors.has(clickedColor.name)) {
-                    foundColors.add(clickedColor.name);
-                    updateProgress();
+            if (clicked.name === target.name) {
+                locked = true;
+                card.classList.add('correct');
+                const wasNew = !found.has(clicked.name);
+                found.add(clicked.name);
+                updateProgress();
+
+                const praise = ["Молодец!", "Правильно!", "Умница!", "Супер!"][Math.floor(Math.random()*4)];
+                if (found.size === CONFIG.length) {
+                    speak(praise, () => setTimeout(showWin, 600));
+                } else {
+                    speak(praise, () => setTimeout(nextRound, 800));
                 }
-
-                const praises = ["Молодец!", "Правильно!", "Умница!"];
-                const praise = praises[Math.floor(Math.random() * praises.length)];
-                
-                speak(praise, () => {
-                    // ПРОВЕРКА ПОБЕДЫ СРАЗУ ПОСЛЕ ПОСЛЕДНЕГО ЦВЕТА
-                    if (foundColors.size >= COLORS_CONFIG.length) {
-                        showWin();
-                    } else {
-                        setTimeout(nextRound, 800);
-                    }
-                });
             } else {
-                // НЕПРАВИЛЬНО + ПОДСКАЗКА
-                isProcessing = true;
-                cardElement.classList.add('wrong');
-                setTimeout(() => cardElement.classList.remove('wrong'), 400);
+                locked = true;
+                card.classList.add('wrong');
+                setTimeout(() => card.classList.remove('wrong'), 400);
 
-                const hint = clickedColor.hints[Math.floor(Math.random() * clickedColor.hints.length)];
-                speak(`Это ${clickedColor.name}, ${hint}`, () => {
-                    isProcessing = false;
-                    // Возобновляем повтор подсказки после озвучки ошибки
-                    startPromptRepeat();
-                });
+                const h1 = clicked.hints[Math.floor(Math.random()*clicked.hints.length)];
+                const h2 = target.hints[Math.floor(Math.random()*target.hints.length)];
+                const msg = `Это ${clicked.name}, ${h1}. А нам нужен ${target.name}, ${h2}.`;
+                speak(msg, () => { locked = false; startRepeat(); });
             }
         }
 
         function showWin() {
-            isProcessing = true;
-            stopPromptRepeat();
+            locked = true; stopRepeat();
             document.getElementById('game-screen').classList.add('hidden');
             document.getElementById('win-screen').classList.remove('hidden');
             speak("Поздравляю! Ты нашла все цвета!");
             
-            // Простая конфетти-анимация
+            // Конфетти
+            const emojis = ['⭐','🎈','🎉','🍭','🌈'];
             setInterval(() => {
                 const el = document.createElement('div');
-                el.innerText = ['⭐','🎈','🎉','🍭'][Math.floor(Math.random()*4)];
-                el.style.position = 'fixed';
-                el.style.left = Math.random() * 100 + 'vw';
-                el.style.top = '-50px';
-                el.style.fontSize = '2rem';
-                el.style.transition = 'top 3s linear';
-                el.style.zIndex = '-1';
+                el.innerText = emojis[Math.floor(Math.random()*emojis.length)];
+                el.style.cssText = `position:fixed;left:${Math.random()*100}vw;top:-50px;font-size:2rem;transition:top 3s linear;z-index:-1;`;
                 document.body.appendChild(el);
                 setTimeout(() => el.style.top = '110vh', 100);
                 setTimeout(() => el.remove(), 3100);
-            }, 400);
+            }, 300);
         }
     </script>
 </body>
