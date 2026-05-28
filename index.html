@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Учим Цвета</title>
+    <style>
+        :root {
+            --bg-color: #f0f4f8;
+            --text-color: #333;
+            --card-shadow: 0 4px 8px rgba(0,0,0,0.12);
+            --correct-anim: #4caf50;
+            --wrong-anim: #f44336;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+            user-select: none;
+            touch-action: manipulation;
+        }
+
+        #start-screen, #game-screen, #win-screen {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: absolute;
+            top: 0; left: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .hidden { display: none !important; }
+
+        h1 { color: var(--text-color); text-align: center; margin-bottom: 20px; font-size: 2rem; }
+        p { font-size: 1.2rem; color: #666; text-align: center; max-width: 80%; margin: 0 0 20px 0; }
+
+        button.start-btn {
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(33, 150, 243, 0.4);
+            transition: transform 0.1s;
+        }
+        button.start-btn:active { transform: scale(0.95); }
+
+        #task-text {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 25px;
+            color: var(--text-color);
+            min-height: 60px;
+            text-align: center;
+            transition: color 0.3s;
+            animation: pulse-text 2s infinite ease-in-out;
+        }
+        @keyframes pulse-text {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.03); }
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            width: 85vw;
+            max-width: 380px;
+            aspect-ratio: 1 / 1;
+        }
+
+        .color-card {
+            background-color: white;
+            border-radius: 24px;
+            box-shadow: var(--card-shadow);
+            cursor: pointer;
+            transition: transform 0.15s;
+            position: relative;
+            border: 4px solid transparent;
+        }
+        .color-card:active { transform: scale(0.92); }
+
+        @keyframes shake {
+            0% { transform: translateX(0); } 25% { transform: translateX(-10px); }
+            50% { transform: translateX(10px); } 75% { transform: translateX(-10px); } 100% { transform: translateX(0); }
+        }
+        @keyframes pop {
+            0% { transform: scale(1); } 50% { transform: scale(1.12); } 100% { transform: scale(1); }
+        }
+        .wrong { animation: shake 0.4s ease-in-out; border-color: var(--wrong-anim); }
+        .correct { animation: pop 0.4s ease-in-out; border-color: var(--correct-anim); }
+
+        #win-screen h1 { color: #4caf50; font-size: 2.8rem; }
+        .confetti { font-size: 4rem; margin: 20px; }
+        .progress { font-size: 1rem; color: #888; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="start-screen">
+        <h1>Учим Цвета 🎨</h1>
+        <p>Нажми кнопку, чтобы начать игру.</p>
+        <button class="start-btn" onclick="startGame()">Играть</button>
+    </div>
+
+    <div id="game-screen" class="hidden">
+        <div id="task-text">Выбери цвет...</div>
+        <div class="grid-container" id="grid"></div>
+        <div class="progress" id="progress-text"></div>
+    </div>
+
+    <div id="win-screen" class="hidden">
+        <div class="confetti">🎉 ⭐ 🏆</div>
+        <h1>Молодец!</h1>
+        <p>Ты нашла все цвета!</p>
+        <br>
+        <button class="start-btn" onclick="location.reload()">Ещё раз</button>
+    </div>
+
+    <script>
+        // ==========================================
+        // КОНФИГУРАЦИЯ (добавляйте/меняйте цвета здесь)
+        // Логика игры автоматически подстроится под любое количество цветов.
+        // ==========================================
+        const COLORS_CONFIG = [
+            { name: "Красный",   hex: "#EF5350", hints: ["как помидорка", "как ягодка", "как машинка"] },
+            { name: "Синий",     hex: "#42A5F5", hints: ["как небо", "как море", "как черничка"] },
+            { name: "Зеленый",   hex: "#66BB6A", hints: ["как травка", "как листик", "как лягушка"] },
+            { name: "Желтый",    hex: "#FFCA28", hints: ["как солнышко", "как цыплёнок", "как банан"] },
+            { name: "Оранжевый", hex: "#FFA726", hints: ["как апельсин", "как морковка", "как тыковка"] },
+            { name: "Фиолетовый",hex: "#9C27B0", hints: ["как фиалка", "как слива", "как виноград"] },
+            { name: "Черный",    hex: "#303030", hints: ["как ночка", "как жучок", "как шоколадка"] },
+            { name: "Белый",     hex: "#FAFAFA", hints: ["как снежок", "как молочко", "как облачко"] },
+            { name: "Розовый",   hex: "#F06292", hints: ["как свинка", "как цветочек", "как леденец"] } 
+            // Просто добавьте новую строку в этот массив, и игра сразу начнёт использовать новый цвет.
+        ];
+        // ==========================================
+
+        let targetColor = null;
+        let isProcessing = false;
+        let foundColors = new Set();
+        let promptRepeatTimer = null;
+        let synth = window.speechSynthesis;
+        let voice = null;
+
+        // Инициализация голоса
+        function initVoice() {
+            const voices = synth.getVoices();
+            voice = voices.find(v => v.lang.includes('ru')) || voices[0];
+        }
+        if (speechSynthesis.onvoiceschanged !== undefined) speechSynthesis.onvoiceschanged = initVoice;
+
+        // Озвучивание с колбэком на окончание
+        function speak(text, onEndCallback) {
+            if (synth.speaking) synth.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            if (voice) utterance.voice = voice;
+            utterance.lang = 'ru-RU';
+            utterance.rate = 0.85;
+            utterance.pitch = 1.1;
+            utterance.onend = () => { if (onEndCallback) onEndCallback(); };
+            synth.speak(utterance);
+        }
+
+        // Таймер повтора подсказки
+        function startPromptRepeat() {
+            stopPromptRepeat();
+            promptRepeatTimer = setInterval(() => {
+                if (targetColor && !isProcessing) {
+                    speak("Выбери " + targetColor.name);
+                }
+            }, 6000); // Повтор каждые 6 секунд
+        }
+        function stopPromptRepeat() {
+            if (promptRepeatTimer) clearInterval(promptRepeatTimer);
+        }
+
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function startGame() {
+            initVoice();
+            foundColors.clear();
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-screen').classList.remove('hidden');
+            updateProgress();
+            nextRound();
+        }
+
+        function updateProgress() {
+            document.getElementById('progress-text').innerText = `Найдено: ${foundColors.size} / ${COLORS_CONFIG.length}`;
+        }
+
+        function nextRound() {
+            isProcessing = false;
+            stopPromptRepeat();
+
+            // Проверка победы
+            if (foundColors.size >= COLORS_CONFIG.length) {
+                showWin();
+                return;
+            }
+
+            // Выбираем 4 случайных цвета
+            const roundColors = shuffle([...COLORS_CONFIG]).slice(0, 4);
+            // Выбираем целевой
+            targetColor = roundColors[Math.floor(Math.random() * roundColors.length)];
+
+            renderGrid(roundColors);
+
+            // Озвучиваем задание
+            setTimeout(() => {
+                const phrases = ["Выбери " + targetColor.name, "Где " + targetColor.name + "?", "Покажи " + targetColor.name];
+                const phrase = phrases[Math.floor(Math.random() * phrases.length)];
+                
+                const taskEl = document.getElementById('task-text');
+                taskEl.innerText = phrase;
+                // Контрастный цвет текста для светлых/тёмных фонов
+                const darkColors = ["Белый", "Желтый", "Розовый"];
+                taskEl.style.color = darkColors.includes(targetColor.name) ? '#333' : targetColor.hex;
+                
+                speak(phrase, () => startPromptRepeat());
+            }, 400);
+        }
+
+        function renderGrid(colors) {
+            const grid = document.getElementById('grid');
+            grid.innerHTML = '';
+            const gridColors = shuffle([...colors]);
+
+            gridColors.forEach(color => {
+                const card = document.createElement('div');
+                card.className = 'color-card';
+                card.style.backgroundColor = color.hex;
+                if (color.name === "Белый") card.style.border = "2px solid #ddd";
+                
+                card.onclick = () => handleCardClick(card, color);
+                grid.appendChild(card);
+            });
+        }
+
+        function handleCardClick(cardElement, clickedColor) {
+            if (isProcessing) return;
+            stopPromptRepeat(); // Останавливаем повтор при клике
+
+            if (clickedColor.name === targetColor.name) {
+                // ПРАВИЛЬНО
+                isProcessing = true;
+                cardElement.classList.add('correct');
+                
+                if (!foundColors.has(clickedColor.name)) {
+                    foundColors.add(clickedColor.name);
+                    updateProgress();
+                }
+
+                const praises = ["Молодец!", "Правильно!", "Умница!"];
+                const praise = praises[Math.floor(Math.random() * praises.length)];
+                
+                speak(praise, () => {
+                    // ПРОВЕРКА ПОБЕДЫ СРАЗУ ПОСЛЕ ПОСЛЕДНЕГО ЦВЕТА
+                    if (foundColors.size >= COLORS_CONFIG.length) {
+                        showWin();
+                    } else {
+                        setTimeout(nextRound, 800);
+                    }
+                });
+            } else {
+                // НЕПРАВИЛЬНО + ПОДСКАЗКА
+                isProcessing = true;
+                cardElement.classList.add('wrong');
+                setTimeout(() => cardElement.classList.remove('wrong'), 400);
+
+                const hint = clickedColor.hints[Math.floor(Math.random() * clickedColor.hints.length)];
+                speak(`Это ${clickedColor.name}, ${hint}`, () => {
+                    isProcessing = false;
+                    // Возобновляем повтор подсказки после озвучки ошибки
+                    startPromptRepeat();
+                });
+            }
+        }
+
+        function showWin() {
+            isProcessing = true;
+            stopPromptRepeat();
+            document.getElementById('game-screen').classList.add('hidden');
+            document.getElementById('win-screen').classList.remove('hidden');
+            speak("Поздравляю! Ты нашла все цвета!");
+            
+            // Простая конфетти-анимация
+            setInterval(() => {
+                const el = document.createElement('div');
+                el.innerText = ['⭐','🎈','🎉','🍭'][Math.floor(Math.random()*4)];
+                el.style.position = 'fixed';
+                el.style.left = Math.random() * 100 + 'vw';
+                el.style.top = '-50px';
+                el.style.fontSize = '2rem';
+                el.style.transition = 'top 3s linear';
+                el.style.zIndex = '-1';
+                document.body.appendChild(el);
+                setTimeout(() => el.style.top = '110vh', 100);
+                setTimeout(() => el.remove(), 3100);
+            }, 400);
+        }
+    </script>
+</body>
+</html>
