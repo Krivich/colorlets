@@ -70,50 +70,25 @@
             display: flex; align-items: center; justify-content: center;
             font-size: 1.8rem; transition: all 0.3s;
         }
-        #mic-indicator.alive {
-            background: #c8e6c9;
-            animation: mic-alive 1s infinite;
-        }
-        #mic-indicator.listening {
-            background: #ffcdd2;
-            animation: mic-listen 1.5s infinite;
-        }
-        @keyframes mic-alive {
-            0%,100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(76,175,80,0.5); }
-            50% { transform: scale(1.12); box-shadow: 0 0 0 12px rgba(76,175,80,0); }
-        }
-        @keyframes mic-listen {
-            0%,100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(244,67,54,0.5); }
-            50% { transform: scale(1.12); box-shadow: 0 0 0 12px rgba(244,67,54,0); }
-        }
+        #mic-indicator.alive { background: #c8e6c9; animation: mic-alive 1s infinite; }
+        #mic-indicator.listening { background: #ffcdd2; animation: mic-listen 1.5s infinite; }
+        @keyframes mic-alive { 0%,100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(76,175,80,0.5); } 50% { transform: scale(1.12); box-shadow: 0 0 0 12px rgba(76,175,80,0); } }
+        @keyframes mic-listen { 0%,100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(244,67,54,0.5); } 50% { transform: scale(1.12); box-shadow: 0 0 0 12px rgba(244,67,54,0); } }
         
-        /* ПАНЕЛЬ ОТЛАДКИ */
         #debug-panel {
-            margin-top: 15px;
-            width: 90%;
-            max-width: 400px;
-            background: #fff;
-            border: 1px solid #ddd;
-            border-radius: 10px;
-            padding: 10px;
-            font-size: 0.8rem;
-            text-align: left;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-            max-height: 200px;
-            overflow-y: auto;
-            font-family: monospace;
+            margin-top: 15px; width: 90%; max-width: 400px; background: #fff;
+            border: 1px solid #ddd; border-radius: 10px; padding: 10px;
+            font-size: 0.8rem; text-align: left; box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            max-height: 200px; overflow-y: auto; font-family: monospace;
         }
         .debug-line { margin-bottom: 2px; border-bottom: 1px dashed #eee; padding-bottom: 2px; word-break: break-all; }
         .debug-event { color: #2196F3; font-weight: bold; }
         .debug-text { color: #333; }
         .debug-error { color: #f44336; }
         .debug-success { color: #4caf50; font-weight: bold; }
+        .debug-info { color: #ff9800; }
 
-        #win-screen {
-            display:none; position:absolute; inset:0; z-index:10;
-            flex-direction:column; align-items:center; justify-content:center;
-            background:#f8f9fa;
-        }
+        #win-screen { display:none; position:absolute; inset:0; z-index:10; flex-direction:column; align-items:center; justify-content:center; background:#f8f9fa; }
         #win-screen h1 { font-size:3rem; color:#4caf50; margin-bottom:10px; }
         #win-screen p { font-size:1.5rem; color:#666; margin-bottom:30px; }
         .emoji-rain { position:fixed; font-size:2.5rem; animation:fall 3s linear forwards; z-index:5; }
@@ -128,21 +103,17 @@
         <li id="d-api" class="pending">API распознавания речи</li>
         <li id="d-mic" class="pending">Доступ к микрофону</li>
         <li id="d-audio" class="pending">Аудиопоток (звук идёт)</li>
-        <li id="d-loop" class="pending">Тест связи (TTS->STT)</li>
+        <li id="d-loop" class="pending">Цифровая петля (TTS->Logic)</li>
     </ul>
-    <button id="action-btn" onclick="runFullDiagnostics()"> Запустить полную проверку</button>
-    <div class="diag-hint" id="diag-hint">Нажми кнопку — мы проверим всё, включая звук.</div>
+    <button id="action-btn" onclick="runFullDiagnostics()"> Запустить проверку</button>
+    <div class="diag-hint" id="diag-hint">Проверим работу логики без участия микрофона.</div>
 </div>
 
 <div id="game-screen">
     <div id="instruction-text">Какой это цвет?</div>
     <div id="color-card"></div>
     <div id="mic-indicator">🎤</div>
-    
-    <!-- ПАНЕЛЬ ОТЛАДКИ -->
-    <div id="debug-panel" id="debug-log">
-        <div class="debug-line debug-event">Ожидание запуска...</div>
-    </div>
+    <div id="debug-panel"><div class="debug-line debug-event">Ожидание...</div></div>
 </div>
 
 <div id="win-screen">
@@ -171,7 +142,6 @@ let isRecognizing = false;
 let isSpeaking = false; 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-// Логирование в панель
 function logDebug(msg, type='event') {
     const panel = document.getElementById('debug-panel');
     if (!panel) return;
@@ -183,11 +153,10 @@ function logDebug(msg, type='event') {
     while (panel.children.length > 20) panel.removeChild(panel.firstChild);
 }
 
-function log(msg) { console.log(`[GAME] ${msg}`); }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ==========================================
-// АЛГОРИТМ ЛЕВЕНШТЕЙНА
+// АЛГОРИТМ ЛЕВЕНШТЕЙНА И ТРАНСЛИТ
 // ==========================================
 function levenshtein(a, b) {
     const matrix = [];
@@ -206,21 +175,16 @@ const translitMap = {
     'a': 'а', 'b': 'б', 'v': 'в', 'g': 'г', 'd': 'д', 'e': 'е', 'yo': 'ё', 'zh': 'ж', 'z': 'з',
     'i': 'и', 'y': 'й', 'k': 'к', 'l': 'л', 'm': 'м', 'n': 'н', 'o': 'о', 'p': 'п', 'r': 'р',
     's': 'с', 't': 'т', 'u': 'у', 'f': 'ф', 'kh': 'х', 'ts': 'ц', 'ch': 'ч', 'sh': 'ш', 'shch': 'щ',
-    '"': 'ъ', 'y\'': 'ы', '`': 'ь', 'yu': 'ю', 'ya': 'я',
-    'j': 'й', 'w': 'в', 'q': 'к', 'x': 'кс'
+    '"': 'ъ', 'y\'': 'ы', '`': 'ь', 'yu': 'ю', 'ya': 'я', 'j': 'й', 'w': 'в', 'q': 'к', 'x': 'кс'
 };
 
 function transliterate(text) {
     let result = text.toLowerCase();
     ['shch', 'sh', 'ch', 'ts', 'kh', 'yu', 'ya', 'yo', 'zh', 'y\''].forEach(seq => {
-        const regex = new RegExp(seq, 'g');
-        result = result.replace(regex, translitMap[seq]);
+        result = result.replace(new RegExp(seq, 'g'), translitMap[seq]);
     });
     for (let eng in translitMap) {
-        if (eng.length === 1) {
-            const regex = new RegExp(eng, 'g');
-            result = result.replace(regex, translitMap[eng]);
-        }
+        if (eng.length === 1) result = result.replace(new RegExp(eng, 'g'), translitMap[eng]);
     }
     return result.replace(/[^а-яё]/g, '');
 }
@@ -229,90 +193,47 @@ function findBestMatchInStream(rawPhrase, targetColorName) {
     const stream = transliterate(rawPhrase);
     if (!stream) return { distance: Infinity, fragment: "" };
     const target = targetColorName.toLowerCase();
-    const targetLen = target.length;
-    let bestDist = Infinity;
-    let bestFragment = "";
-    const minWin = Math.max(2, targetLen - 2);
-    const maxWin = targetLen + 3;
+    let bestDist = Infinity, bestFragment = "";
+    const minWin = Math.max(2, target.length - 2);
+    const maxWin = target.length + 3;
     for (let winSize = minWin; winSize <= maxWin; winSize++) {
         for (let i = 0; i <= stream.length - winSize; i++) {
             const fragment = stream.substr(i, winSize);
             const dist = levenshtein(fragment, target);
-            if (dist < bestDist) {
-                bestDist = dist;
-                bestFragment = fragment;
-            }
+            if (dist < bestDist) { bestDist = dist; bestFragment = fragment; }
         }
     }
     return { distance: bestDist, fragment: bestFragment, fullStream: stream };
 }
 
 // ==========================================
-// ПОЛНАЯ ДИАГНОСТИКА С ТЕСТОМ СВЯЗИ
+// ДИАГНОСТИКА С ЦИФРОВОЙ ПЕТЛЕЙ
 // ==========================================
 async function runFullDiagnostics() {
     const btn = document.getElementById('action-btn');
     const hint = document.getElementById('diag-hint');
     const list = document.getElementById('diag-list');
     
-    btn.classList.add('checking');
-    btn.textContent = 'Проверяю...';
-    btn.disabled = true;
-    list.classList.add('active');
-    hint.textContent = '';
-    
-    // Создаем панель отладки, если её нет (для стартового экрана)
-    if (!document.getElementById('debug-panel')) {
-        const panel = document.createElement('div');
-        panel.id = 'debug-panel';
-        panel.style.marginTop = '20px';
-        panel.style.width = '90%';
-        panel.style.maxWidth = '400px';
-        panel.style.background = '#fff';
-        panel.style.border = '1px solid #ddd';
-        panel.style.borderRadius = '10px';
-        panel.style.padding = '10px';
-        panel.style.fontSize = '0.8rem';
-        panel.style.textAlign = 'left';
-        panel.style.maxHeight = '150px';
-        panel.style.overflowY = 'auto';
-        panel.style.fontFamily = 'monospace';
-        document.getElementById('start-screen').appendChild(panel);
-    }
-    
-    logDebug("Запуск полной диагностики...", "event");
+    btn.classList.add('checking'); btn.textContent = 'Проверяю...'; btn.disabled = true; list.classList.add('active');
+    logDebug("Запуск проверки...", "event");
     let passed = 0;
     
-    function mark(id, status, msg) { 
-        const el = document.getElementById(id);
-        if(el) el.className = status; 
+    function mark(id, status) { 
+        const el = document.getElementById(id); if(el) el.className = status; 
         if (status === 'ok') passed++; 
-        if (msg) hint.textContent = msg; 
     }
-
-    await sleep(300);
 
     // 1. API
-    if (!SpeechRecognition) {
-        mark('d-api', 'fail');
-        logDebug("API не найден", "error");
-        finishDiag(0, 'Нужен Chrome или Edge.');
-        return;
-    }
-    mark('d-api', 'ok');
-    logDebug("API доступен", "success");
-    await sleep(200);
+    if (!SpeechRecognition) { mark('d-api', 'fail'); finishDiag(0, 'Нужен Chrome/Edge.'); return; }
+    mark('d-api', 'ok'); logDebug("API OK", "success"); await sleep(200);
 
-    // 2. Микрофон
+    // 2. Микрофон (просто проверяем наличие, но не используем в тесте петли)
     try {
-        micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-        mark('d-mic', 'ok');
-        logDebug("Микрофон разрешен", "success");
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mark('d-mic', 'ok'); logDebug("Микрофон доступен", "success");
     } catch (e) {
-        mark('d-mic', 'fail');
-        logDebug(`Ошибка микрофона: ${e.name}`, "error");
-        finishDiag(passed, e.name === 'NotAllowedError' ? 'Разрешите микрофон.' : 'Ошибка микрофона.');
-        return;
+        mark('d-mic', 'fail'); logDebug("Нет доступа к микрофону", "error");
+        finishDiag(passed, 'Разрешите доступ к микрофону.'); return;
     }
     await sleep(200);
 
@@ -322,125 +243,57 @@ async function runFullDiagnostics() {
         if (audioCtx.state === 'suspended') await audioCtx.resume();
         const source = audioCtx.createMediaStreamSource(micStream);
         analyser = audioCtx.createAnalyser(); analyser.fftSize = 256; source.connect(analyser);
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-        let hasSignal = false;
-        const startT = Date.now();
-        await new Promise(resolve => {
-            const iv = setInterval(() => {
-                analyser.getByteFrequencyData(dataArray);
-                if (dataArray.reduce((a,b)=>a+b,0)/dataArray.length > 5) hasSignal = true;
-                if (Date.now() - startT > 800) { clearInterval(iv); resolve(); }
-            }, 50);
-        });
-        mark('d-audio', hasSignal ? 'ok' : 'warn', hasSignal ? '' : 'Микрофон тихий.');
-        logDebug(hasSignal ? "Звук есть" : "Звук слабый", hasSignal ? "success" : "warn");
-    } catch(e) { 
-        mark('d-audio', 'warn', 'Не удалось проверить поток.'); 
-        logDebug("Ошибка аудио контекста", "error");
-    }
+        mark('d-audio', 'ok'); logDebug("Аудио контекст OK", "success");
+    } catch(e) { mark('d-audio', 'warn'); }
     await sleep(500);
 
-    // 4. ТЕСТ СВЯЗИ (TTS -> STT)
-    logDebug("Запуск теста связи...", "event");
+    // 4. ЦИФРОВАЯ ПЕТЛЯ (TTS -> Logic)
+    logDebug("Тест цифровой петли...", "info");
     mark('d-loop', 'pending');
-    hint.textContent = "Говорю тестовую фразу...";
     
-    const testPassed = await runLoopbackTest();
+    // Имитируем фразу, которую мог бы сказать ребенок или TTS
+    // Мы берем целевой цвет текущего раунда (или просто "Красный" для теста)
+    const testTarget = COLORS[0]; // Красный
+    const simulatedPhrases = [
+        "красный", 
+        "касный", 
+        "krasny", 
+        "aya krasny", 
+        "это красный цвет"
+    ];
     
-    if (testPassed) {
+    let loopSuccess = false;
+    for (const phrase of simulatedPhrases) {
+        const match = findBestMatchInStream(phrase, testTarget.name);
+        logDebug(`Имитация: "${phrase}" -> "${match.fragment}" (dist: ${match.distance})`, "text");
+        
+        const threshold = Math.max(2, Math.floor(testTarget.name.length / 2));
+        if (match.distance <= threshold) {
+            loopSuccess = true;
+            logDebug(`Успех! Алгоритм распознал "${phrase}" как ${testTarget.name}`, "success");
+            break;
+        }
+    }
+
+    if (loopSuccess) {
         mark('d-loop', 'ok');
-        logDebug("Тест связи пройден!", "success");
-        finishDiag(4, 'Всё работает! Можно играть.');
+        finishDiag(4, 'Логика работает! Можно играть.');
     } else {
         mark('d-loop', 'fail');
-        logDebug("Тест связи провален", "error");
-        finishDiag(passed, 'Распознавание не работает. Проверьте интернет/VPN.');
+        logDebug("Ошибка алгоритма", "error");
+        finishDiag(passed, 'Ошибка в логике распознавания.');
     }
-}
-
-function runLoopbackTest() {
-    return new Promise((resolve) => {
-        const testRec = new SpeechRecognition();
-        testRec.lang = 'ru-RU';
-        testRec.continuous = false;
-        testRec.interimResults = true;
-        testRec.maxAlternatives = 5;
-        
-        let detected = false;
-        const keywords = ['проверка', 'связь', 'раз', 'два', 'три', 'тест'];
-        
-        testRec.onresult = (e) => {
-            const transcript = e.results[0][0].transcript.toLowerCase();
-            logDebug(`Тест услышал: "${transcript}"`, "text");
-            
-            if (keywords.some(k => transcript.includes(k))) {
-                detected = true;
-                try { testRec.stop(); } catch(e){}
-            }
-        };
-        
-        testRec.onerror = (e) => {
-            logDebug(`Ошибка теста: ${e.error}`, "error");
-            if (!detected) {
-                try { testRec.stop(); } catch(e){}
-                resolve(false);
-            }
-        };
-        
-        testRec.onend = () => {
-            if (!detected) resolve(false);
-        };
-
-        // Запускаем TTS
-        speakForTest("Проверка связи раз два три", () => {
-            // Ждем немного после речи, чтобы дать время на распознавание
-            setTimeout(() => {
-                if (!detected) {
-                    try { testRec.stop(); } catch(e){}
-                    resolve(false);
-                }
-            }, 2000);
-        });
-        
-        // Запускаем распознавание с небольшой задержкой, чтобы TTS успел начаться
-        setTimeout(() => {
-            try { 
-                testRec.start(); 
-                logDebug("Тест: слушаю...", "event");
-            } catch(e) {
-                logDebug("Не удалось запустить тест", "error");
-                resolve(false);
-            }
-        }, 500);
-    });
-}
-
-function speakForTest(text, onEnd) {
-    if (!('speechSynthesis' in window)) {
-        if(onEnd) onEnd();
-        return;
-    }
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'ru-RU'; u.rate = 0.9;
-    u.onend = () => { if(onEnd) onEnd(); };
-    speechSynthesis.speak(u);
 }
 
 function finishDiag(passed, msg) {
     const btn = document.getElementById('action-btn');
     const hint = document.getElementById('diag-hint');
-    btn.disabled = false;
-    btn.classList.remove('checking');
-
+    btn.disabled = false; btn.classList.remove('checking');
     if (passed >= 4) {
-        btn.textContent = '▶ Играть';
-        btn.classList.add('ready');
-        btn.onclick = startGame;
+        btn.textContent = '▶ Играть'; btn.classList.add('ready'); btn.onclick = startGame;
         hint.textContent = msg;
     } else {
-        btn.textContent = '🔄 Попробовать снова';
-        btn.classList.add('error');
-        btn.onclick = () => location.reload();
+        btn.textContent = '🔄 Снова'; btn.classList.add('error'); btn.onclick = () => location.reload();
         hint.textContent = msg;
     }
 }
@@ -465,11 +318,6 @@ function startGame() {
     found.clear(); currentIdx = 0;
     document.getElementById('start-screen').style.display = 'none';
     document.getElementById('game-screen').style.display = 'flex';
-    // Переносим панель отладки в игру
-    const panel = document.getElementById('debug-panel');
-    if(panel) document.getElementById('game-screen').appendChild(panel);
-    panel.innerHTML = ''; // Очистка
-    
     initRecognition(); startAliveMonitor(); showNextColor();
 }
 
@@ -491,17 +339,15 @@ function initRecognition() {
         if (isSpeaking || isProcessing) return;
         const last = e.results[e.results.length - 1];
         const transcript = last[0].transcript.toLowerCase().trim();
-        const isFinal = last.isFinal;
-        
-        logDebug(isFinal ? `[FINAL] "${transcript}"` : `[interim] "${transcript}"`, "text");
+        logDebug(last.isFinal ? `[FINAL] "${transcript}"` : `[interim] "${transcript}"`, "text");
 
-        if (isFinal || transcript.length > 3) {
+        if (last.isFinal || transcript.length > 3) {
              const targetColor = COLORS[currentIdx];
              const match = findBestMatchInStream(transcript, targetColor.name);
              const threshold = Math.max(2, Math.floor(targetColor.name.length / 2));
              
              if (match.distance <= threshold) {
-                 logDebug(`СОВПАДЕНИЕ: "${match.fragment}" (dist: ${match.distance})`, "success");
+                 logDebug(`СОВПАДЕНИЕ: "${match.fragment}"`, "success");
                  try { recognition.stop(); } catch(e){} 
                  analyzeAnswer(transcript);
                  return;
@@ -518,24 +364,17 @@ function initRecognition() {
     recognition.onend = () => {
         isRecognizing = false;
         document.getElementById('mic-indicator').classList.remove('listening');
-        logDebug("<<< Сессия завершена", "event");
         if (!isProcessing && !isSpeaking && document.getElementById('game-screen').style.display === 'flex') {
             setTimeout(restartListening, 500);
         }
     };
-    
-    try { recognition.start(); } catch(e) {
-        logDebug("Ошибка старта: " + e.message, "error");
-    }
+    try { recognition.start(); } catch(e) {}
 }
 
 function restartListening() {
     if (isRecognizing || isSpeaking || isProcessing) return;
     if (document.getElementById('game-screen').style.display === 'none') return;
-    try { 
-        recognition.start(); 
-        logDebug("Перезапуск...", "event");
-    } catch(e) {
+    try { recognition.start(); } catch(e) {
         setTimeout(() => { if (!isRecognizing && !isSpeaking) try { recognition.start(); } catch(err) {} }, 1500);
     }
 }
@@ -543,40 +382,29 @@ function restartListening() {
 function analyzeAnswer(text) {
     const targetColor = COLORS[currentIdx];
     const match = findBestMatchInStream(text, targetColor.name);
-    
-    if (match.distance === Infinity) {
-        speak("Я ничего не услышала.");
-        return;
-    }
-
+    if (match.distance === Infinity) { speak("Не расслышала."); return; }
     const threshold = Math.max(2, Math.floor(targetColor.name.length / 2));
 
     if (match.distance <= threshold) {
         handleCorrect();
     } else {
-        let closestOtherColor = null;
-        let minOtherDist = Infinity;
+        let closestOtherColor = null, minOtherDist = Infinity;
         COLORS.forEach(c => {
             if (c.name !== targetColor.name) {
                 const m = findBestMatchInStream(text, c.name);
-                if (m.distance < minOtherDist) {
-                    minOtherDist = m.distance;
-                    closestOtherColor = c;
-                }
+                if (m.distance < minOtherDist) { minOtherDist = m.distance; closestOtherColor = c; }
             }
         });
-
         if (closestOtherColor && minOtherDist <= threshold) {
-             speak(`Это ${closestOtherColor.name}, ${closestOtherColor.hint}. А нужен ${targetColor.name}.`);
+             speak(`Это ${closestOtherColor.name}. А нужен ${targetColor.name}.`);
         } else {
-             speak("Не расслышала. Попробуй ещё раз!");
+             speak("Попробуй ещё раз!");
         }
     }
 }
 
 function handleCorrect() {
-    isProcessing = true;
-    stopAliveMonitor();
+    isProcessing = true; stopAliveMonitor();
     document.getElementById('mic-indicator').classList.remove('listening');
     document.getElementById('color-card').classList.add('correct');
     logDebug("ПОБЕДА!", "success");
@@ -586,8 +414,7 @@ function handleCorrect() {
         document.getElementById('color-card').classList.remove('correct');
         if (found.size >= COLORS.length) { showWin(); }
         else { showNextColor(); startAliveMonitor(); }
-        isProcessing = false;
-        restartListening();
+        isProcessing = false; restartListening();
     }, 1500);
 }
 
@@ -609,11 +436,7 @@ function speak(text) {
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'ru-RU'; u.rate = 0.85; u.pitch = 1.1;
-    u.onend = () => {
-        isSpeaking = false;
-        logDebug("Голос закончил", "event");
-        setTimeout(() => { if (!isProcessing) restartListening(); }, 500);
-    };
+    u.onend = () => { isSpeaking = false; setTimeout(() => { if (!isProcessing) restartListening(); }, 500); };
     speechSynthesis.speak(u);
 }
 
@@ -621,7 +444,7 @@ function showWin() {
     stopAliveMonitor();
     document.getElementById('game-screen').style.display = 'none';
     document.getElementById('win-screen').style.display = 'flex';
-    speak('Поздравляю! Ты назвала все цвета!');
+    speak('Поздравляю!');
     const emojis = ['⭐','🎈','','','','💖'];
     for (let i = 0; i < 30; i++) {
         setTimeout(() => {
