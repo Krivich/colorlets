@@ -49,7 +49,6 @@
         
         .diag-hint { margin-top: 15px; font-size: 0.95rem; color: #666; max-width: 90%; line-height: 1.5; min-height: 40px; }
 
-        /* Индикатор громкости */
         #volume-meter {
             width: 200px; height: 10px; background: #ddd;
             border-radius: 5px; margin: 15px auto; overflow: hidden;
@@ -72,13 +71,34 @@
         @keyframes mic-alive { 0%,100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(76,175,80,0.5); } 50% { transform: scale(1.12); box-shadow: 0 0 0 12px rgba(76,175,80,0); } }
         @keyframes mic-listen { 0%,100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(244,67,54,0.5); } 50% { transform: scale(1.12); box-shadow: 0 0 0 12px rgba(244,67,54,0); } }
         
-        #debug-panel { margin-top: 15px; width: 90%; max-width: 400px; background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 10px; font-size: 0.8rem; text-align: left; box-shadow: 0 2px 5px rgba(0,0,0,0.05); max-height: 200px; overflow-y: auto; font-family: monospace; }
+        #debug-panel { 
+            margin-top: 15px; width: 90%; max-width: 400px; background: #fff;
+            border: 1px solid #ddd; border-radius: 10px; padding: 10px;
+            font-size: 0.8rem; text-align: left; box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            max-height: 250px; overflow-y: auto; font-family: monospace;
+            display: flex; flex-direction: column; gap: 5px;
+        }
         .debug-line { margin-bottom: 2px; border-bottom: 1px dashed #eee; padding-bottom: 2px; word-break: break-all; }
         .debug-event { color: #2196F3; font-weight: bold; }
         .debug-text { color: #333; }
         .debug-error { color: #f44336; }
         .debug-success { color: #4caf50; font-weight: bold; }
         .debug-info { color: #ff9800; }
+
+        /* Кнопка прослушивания */
+        #play-last-btn {
+            margin-top: 10px;
+            padding: 8px 15px;
+            background: #607d8b;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            display: none; /* Скрыта по умолчанию */
+            align-self: center;
+        }
+        #play-last-btn:hover { background: #455a64; }
 
         #win-screen { display:none; position:absolute; inset:0; z-index:10; flex-direction:column; align-items:center; justify-content:center; background:#f8f9fa; }
         #win-screen h1 { font-size:3rem; color:#4caf50; margin-bottom:10px; }
@@ -111,7 +131,12 @@
     <div id="instruction-text">Какой это цвет?</div>
     <div id="color-card"></div>
     <div id="mic-indicator">🎤</div>
-    <div id="debug-panel"><div class="debug-line debug-event">Ожидание...</div></div>
+    
+    <!-- ПАНЕЛЬ ОТЛАДКИ -->
+    <div id="debug-panel">
+        <div class="debug-line debug-event">Ожидание запуска...</div>
+    </div>
+    <button id="play-last-btn">🔊 Прослушать последнюю посылку STT</button>
 </div>
 
 <div id="win-screen">
@@ -138,6 +163,11 @@ let recognition = null, audioCtx = null, analyser = null, micStream = null;
 let aliveCheckInterval = null;
 let isRecognizing = false; 
 let isSpeaking = false; 
+
+// Для записи последней посылки
+let lastAudioBlob = null;
+const playBtn = document.getElementById('play-last-btn');
+
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 function logDebug(msg, type='event') {
@@ -148,7 +178,7 @@ function logDebug(msg, type='event') {
     line.textContent = msg;
     panel.appendChild(line);
     panel.scrollTop = panel.scrollHeight;
-    while (panel.children.length > 20) panel.removeChild(panel.firstChild);
+    while (panel.children.length > 25) panel.removeChild(panel.firstChild);
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -267,7 +297,6 @@ async function runFullDiagnostics() {
     recBtn.style.display = 'block';
 }
 
-// Функция тестовой записи
 function testRecording() {
     const recBtn = document.getElementById('record-btn');
     const meter = document.getElementById('volume-meter');
@@ -300,18 +329,17 @@ function testRecording() {
         audio.play();
         audio.onended = () => {
             hint.textContent = "Если ты слышал свой голос четко - жми Играть!";
-            const playBtn = document.createElement('button');
-            playBtn.id = 'action-btn';
-            playBtn.className = 'ready';
-            playBtn.textContent = '▶ Играть';
-            playBtn.onclick = startGame;
-            document.getElementById('start-screen').appendChild(playBtn);
+            const playBtnGame = document.createElement('button');
+            playBtnGame.id = 'action-btn';
+            playBtnGame.className = 'ready';
+            playBtnGame.textContent = '▶ Играть';
+            playBtnGame.onclick = startGame;
+            document.getElementById('start-screen').appendChild(playBtnGame);
         };
     };
 
     mediaRecorder.start();
     
-    // Визуализация громкости
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
     const volInterval = setInterval(() => {
         analyser.getByteFrequencyData(dataArray);
@@ -326,7 +354,6 @@ function testRecording() {
 }
 
 function finishDiag(passed, msg) {
-    // Эта функция теперь вызывается только при ошибках до записи
     const btn = document.getElementById('action-btn');
     const hint = document.getElementById('diag-hint');
     btn.disabled = false; btn.classList.remove('checking');
@@ -337,7 +364,7 @@ function finishDiag(passed, msg) {
 }
 
 // ==========================================
-// ИГРА (без изменений)
+// ИГРА
 // ==========================================
 function startAliveMonitor() {
     const mic = document.getElementById('mic-indicator');
@@ -356,6 +383,19 @@ function startGame() {
     found.clear(); currentIdx = 0;
     document.getElementById('start-screen').style.display = 'none';
     document.getElementById('game-screen').style.display = 'flex';
+    
+    // Настраиваем кнопку прослушивания
+    playBtn.onclick = () => {
+        if (lastAudioBlob) {
+            const url = URL.createObjectURL(lastAudioBlob);
+            const audio = new Audio(url);
+            logDebug("Воспроизведение последней посылки...", "info");
+            audio.play();
+        } else {
+            logDebug("Нет сохраненной записи.", "error");
+        }
+    };
+
     initRecognition(); startAliveMonitor(); showNextColor();
 }
 
@@ -366,11 +406,33 @@ function initRecognition() {
     recognition.interimResults = true; 
     recognition.maxAlternatives = 5;
 
+    // ВАЖНО: Мы не можем получить прямой доступ к аудио-потоку Web Speech API.
+    // Но мы можем имитировать запись того, что "видит" пользователь, используя наш микрофон.
+    // Для этого мы будем писать звук параллельно с распознаванием.
+    
+    let mediaRecorder = null;
+    let recordedChunks = [];
+
     recognition.onstart = () => {
         isRecognizing = true;
         if (isSpeaking) { try { recognition.stop(); } catch(e){} return; }
         document.getElementById('mic-indicator').classList.add('listening');
         logDebug(">>> Слушаю...", "event");
+        
+        // Запускаем параллельную запись для отладки
+        try {
+            mediaRecorder = new MediaRecorder(micStream);
+            recordedChunks = [];
+            mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+            mediaRecorder.onstop = () => {
+                lastAudioBlob = new Blob(recordedChunks, { 'type' : 'audio/ogg; codecs=opus' });
+                playBtn.style.display = 'block'; // Показываем кнопку
+                logDebug("Запись посылки завершена. Кнопка активна.", "info");
+            };
+            mediaRecorder.start();
+        } catch(e) {
+            logDebug("Не удалось запустить параллельную запись: " + e.message, "error");
+        }
     };
 
     recognition.onresult = (e) => {
@@ -387,6 +449,7 @@ function initRecognition() {
              if (match.distance <= threshold) {
                  logDebug(`СОВПАДЕНИЕ: "${match.fragment}"`, "success");
                  try { recognition.stop(); } catch(e){} 
+                 if(mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
                  analyzeAnswer(transcript);
                  return;
              }
@@ -396,12 +459,15 @@ function initRecognition() {
     recognition.onerror = (e) => {
         isRecognizing = false;
         logDebug(`Ошибка: ${e.error}`, "error");
+        if(mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
         setTimeout(restartListening, 1000);
     };
     
     recognition.onend = () => {
         isRecognizing = false;
         document.getElementById('mic-indicator').classList.remove('listening');
+        if(mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+        
         if (!isProcessing && !isSpeaking && document.getElementById('game-screen').style.display === 'flex') {
             setTimeout(restartListening, 500);
         }
