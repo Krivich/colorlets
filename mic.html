@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Назови цвет</title>
     <style>
-        /* Стили те же, что и раньше, без изменений */
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: -apple-system, system-ui, sans-serif;
@@ -97,17 +96,18 @@
             border: 1px solid #ddd;
             border-radius: 10px;
             padding: 10px;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             text-align: left;
             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-            max-height: 150px;
+            max-height: 200px;
             overflow-y: auto;
+            font-family: monospace;
         }
-        .debug-line { margin-bottom: 4px; border-bottom: 1px dashed #eee; padding-bottom: 2px; }
-        .debug-label { color: #888; font-weight: bold; }
-        .debug-val { color: #333; word-break: break-all; }
-        .debug-success { color: #2e7d32; font-weight: bold; }
-        .debug-fail { color: #c62828; }
+        .debug-line { margin-bottom: 2px; border-bottom: 1px dashed #eee; padding-bottom: 2px; word-break: break-all; }
+        .debug-event { color: #2196F3; font-weight: bold; }
+        .debug-text { color: #333; }
+        .debug-error { color: #f44336; }
+        .debug-success { color: #4caf50; font-weight: bold; }
 
         #win-screen {
             display:none; position:absolute; inset:0; z-index:10;
@@ -139,12 +139,8 @@
     <div id="mic-indicator">🎤</div>
     
     <!-- ПАНЕЛЬ ОТЛАДКИ -->
-    <div id="debug-panel">
-        <div class="debug-line"><span class="debug-label">Статус:</span> <span id="dbg-status" class="debug-val">Ожидание...</span></div>
-        <div class="debug-line"><span class="debug-label">Сырой текст:</span> <span id="dbg-raw" class="debug-val">-</span></div>
-        <div class="debug-line"><span class="debug-label">Поток:</span> <span id="dbg-stream" class="debug-val">-</span></div>
-        <div class="debug-line"><span class="debug-label">Лучшее:</span> <span id="dbg-match" class="debug-val">-</span></div>
-        <div class="debug-line"><span class="debug-label">Решение:</span> <span id="dbg-decision" class="debug-val">-</span></div>
+    <div id="debug-panel" id="debug-log">
+        <div class="debug-line debug-event">Ожидание запуска...</div>
     </div>
 </div>
 
@@ -174,21 +170,17 @@ let isRecognizing = false;
 let isSpeaking = false; 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-// Элементы отладки
-const dbgStatus = document.getElementById('dbg-status');
-const dbgRaw = document.getElementById('dbg-raw');
-const dbgStream = document.getElementById('dbg-stream');
-const dbgMatch = document.getElementById('dbg-match');
-const dbgDecision = document.getElementById('dbg-decision');
-
-function setDebug(status, raw, stream, match, decision, type='') {
-    if(status) dbgStatus.textContent = status;
-    if(raw !== undefined) dbgRaw.textContent = raw;
-    if(stream !== undefined) dbgStream.textContent = stream;
-    if(match !== undefined) dbgMatch.textContent = match;
-    if(decision !== undefined) {
-        dbgDecision.textContent = decision;
-        dbgDecision.className = 'debug-val ' + type;
+// Логирование в панель
+function logDebug(msg, type='event') {
+    const panel = document.getElementById('debug-panel');
+    const line = document.createElement('div');
+    line.className = `debug-line debug-${type}`;
+    line.textContent = msg;
+    panel.appendChild(line);
+    panel.scrollTop = panel.scrollHeight;
+    // Храним только последние 20 строк
+    while (panel.children.length > 20) {
+        panel.removeChild(panel.firstChild);
     }
 }
 
@@ -211,9 +203,6 @@ function levenshtein(a, b) {
     return matrix[b.length][a.length];
 }
 
-// ==========================================
-// ТРАНСЛИТЕРАЦИЯ И ПОИСК В ПОТОКЕ
-// ==========================================
 const translitMap = {
     'a': 'а', 'b': 'б', 'v': 'в', 'g': 'г', 'd': 'д', 'e': 'е', 'yo': 'ё', 'zh': 'ж', 'z': 'з',
     'i': 'и', 'y': 'й', 'k': 'к', 'l': 'л', 'm': 'м', 'n': 'н', 'o': 'о', 'p': 'п', 'r': 'р',
@@ -240,16 +229,12 @@ function transliterate(text) {
 function findBestMatchInStream(rawPhrase, targetColorName) {
     const stream = transliterate(rawPhrase);
     if (!stream) return { distance: Infinity, fragment: "" };
-
     const target = targetColorName.toLowerCase();
     const targetLen = target.length;
-    
     let bestDist = Infinity;
     let bestFragment = "";
-
     const minWin = Math.max(2, targetLen - 2);
     const maxWin = targetLen + 3;
-
     for (let winSize = minWin; winSize <= maxWin; winSize++) {
         for (let i = 0; i <= stream.length - winSize; i++) {
             const fragment = stream.substr(i, winSize);
@@ -271,14 +256,16 @@ async function runDiagnostics() {
     const hint = document.getElementById('diag-hint');
     const list = document.getElementById('diag-list');
     btn.classList.add('checking'); btn.textContent = 'Проверяю...'; btn.disabled = true; list.classList.add('active'); hint.textContent = '';
+    logDebug("Запуск диагностики...", "event");
     let passed = 0;
     function mark(id, status, msg) { document.getElementById(id).className = status; if (status === 'ok') passed++; if (msg) hint.textContent = msg; }
     await sleep(300);
     if (!SpeechRecognition) { mark('d-api', 'fail'); finishDiag(0, 'Нужен Chrome или Edge.'); return; }
-    mark('d-api', 'ok'); await sleep(200);
+    mark('d-api', 'ok'); logDebug("API доступен", "success");
+    await sleep(200);
     try {
         micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-        mark('d-mic', 'ok');
+        mark('d-mic', 'ok'); logDebug("Микрофон разрешен", "success");
     } catch (e) {
         mark('d-mic', 'fail');
         finishDiag(passed, e.name === 'NotAllowedError' ? 'Разрешите микрофон.' : 'Ошибка микрофона.');
@@ -301,6 +288,7 @@ async function runDiagnostics() {
             }, 50);
         });
         mark('d-audio', hasSignal ? 'ok' : 'warn', hasSignal ? '' : 'Микрофон тихий.');
+        logDebug(hasSignal ? "Звук есть" : "Звук слабый", hasSignal ? "success" : "warn");
     } catch(e) { mark('d-audio', 'warn', 'Не удалось проверить поток.'); }
     finishDiag(passed >= 2 ? 3 : passed);
 }
@@ -331,6 +319,7 @@ function startGame() {
     found.clear(); currentIdx = 0;
     document.getElementById('start-screen').style.display = 'none';
     document.getElementById('game-screen').style.display = 'flex';
+    document.getElementById('debug-panel').innerHTML = ''; // Очистка лога
     initRecognition(); startAliveMonitor(); showNextColor();
 }
 
@@ -338,39 +327,35 @@ function initRecognition() {
     recognition = new SpeechRecognition();
     recognition.lang = 'ru-RU';
     recognition.continuous = true; 
-    recognition.interimResults = true; // ВАЖНО: ловим промежуточные результаты
+    recognition.interimResults = true; 
     recognition.maxAlternatives = 5;
 
     recognition.onstart = () => {
         isRecognizing = true;
         if (isSpeaking) { try { recognition.stop(); } catch(e){} return; }
         document.getElementById('mic-indicator').classList.add('listening');
-        setDebug("Слушаю...", "-", "-", "-", "-");
+        logDebug(">>> Слушаю...", "event");
     };
 
     recognition.onresult = (e) => {
         if (isSpeaking || isProcessing) return;
         
-        // Берем последний результат из списка
         const last = e.results[e.results.length - 1];
         const transcript = last[0].transcript.toLowerCase().trim();
+        const isFinal = last.isFinal;
         
-        // Обновляем отладку даже для промежуточных результатов
-        setDebug(last.isFinal ? "Обработка..." : "Слышу...", transcript, "-", "-", "-");
+        // Логируем каждое изменение текста
+        logDebug(isFinal ? `[FINAL] "${transcript}"` : `[interim] "${transcript}"`, "text");
 
         // Если результат финальный ИЛИ если мы уже видим хорошее совпадение в промежуточном
-        // (для ускорения реакции на мобильных)
-        if (last.isFinal || transcript.length > 3) {
-             // Пробуем распознать
+        if (isFinal || transcript.length > 3) {
              const targetColor = COLORS[currentIdx];
              const match = findBestMatchInStream(transcript, targetColor.name);
-             
-             // Если расстояние маленькое, считаем что ребенок ответил, даже если браузер не поставил isFinal
              const threshold = Math.max(2, Math.floor(targetColor.name.length / 2));
              
              if (match.distance <= threshold) {
-                 log(`Распознано (промежуточно): "${transcript}" -> ${match.fragment}`);
-                 try { recognition.stop(); } catch(e){} // Останавливаем слушание, чтобы ответить
+                 logDebug(`СОВПАДЕНИЕ: "${match.fragment}" (dist: ${match.distance})`, "success");
+                 try { recognition.stop(); } catch(e){} 
                  analyzeAnswer(transcript);
                  return;
              }
@@ -379,27 +364,21 @@ function initRecognition() {
 
     recognition.onerror = (e) => {
         isRecognizing = false;
-        log(`Ошибка: ${e.error}`);
-        // Не показываем ошибку пользователю при no-speech, просто рестартуем
-        if (e.error !== 'no-speech') {
-             setDebug(`Ошибка: ${e.error}`, "-", "-", "-", "-", "debug-fail");
-        }
-        // Долгая пауза перед рестартом, чтобы не щелкало
+        logDebug(`Ошибка: ${e.error}`, "error");
         setTimeout(restartListening, 1000);
     };
     
     recognition.onend = () => {
         isRecognizing = false;
         document.getElementById('mic-indicator').classList.remove('listening');
+        logDebug("<<< Сессия завершена (onend)", "event");
         if (!isProcessing && !isSpeaking && document.getElementById('game-screen').style.display === 'flex') {
-            setDebug("Перезапуск...", "-", "-", "-", "-");
-            // Пауза перед рестартом
             setTimeout(restartListening, 500);
         }
     };
     
     try { recognition.start(); } catch(e) {
-        setDebug("Ошибка старта", "-", "-", "-", "-", "debug-fail");
+        logDebug("Ошибка старта: " + e.message, "error");
     }
 }
 
@@ -408,7 +387,7 @@ function restartListening() {
     if (document.getElementById('game-screen').style.display === 'none') return;
     try { 
         recognition.start(); 
-        setDebug("Слушаю...", "-", "-", "-", "-");
+        logDebug("Перезапуск...", "event");
     } catch(e) {
         setTimeout(() => { if (!isRecognizing && !isSpeaking) try { recognition.start(); } catch(err) {} }, 1500);
     }
@@ -418,10 +397,7 @@ function analyzeAnswer(text) {
     const targetColor = COLORS[currentIdx];
     const match = findBestMatchInStream(text, targetColor.name);
     
-    setDebug("Анализ", text, match.fullStream, `"${match.fragment}" (dist: ${match.distance})`, "-", "");
-
     if (match.distance === Infinity) {
-        setDebug("-", "-", "-", "-", "Нет русских букв", "debug-fail");
         speak("Я ничего не услышала.");
         return;
     }
@@ -429,10 +405,8 @@ function analyzeAnswer(text) {
     const threshold = Math.max(2, Math.floor(targetColor.name.length / 2));
 
     if (match.distance <= threshold) {
-        setDebug("-", "-", "-", "-", `ВЕРНО! (${match.distance})`, "debug-success");
         handleCorrect();
     } else {
-        // Проверка на другие цвета
         let closestOtherColor = null;
         let minOtherDist = Infinity;
         COLORS.forEach(c => {
@@ -446,10 +420,8 @@ function analyzeAnswer(text) {
         });
 
         if (closestOtherColor && minOtherDist <= threshold) {
-             setDebug("-", "-", "-", "-", `Это ${closestOtherColor.name}`, "debug-fail");
              speak(`Это ${closestOtherColor.name}, ${closestOtherColor.hint}. А нужен ${targetColor.name}.`);
         } else {
-             setDebug("-", "-", "-", "-", `Не похоже (${match.distance})`, "debug-fail");
              speak("Не расслышала. Попробуй ещё раз!");
         }
     }
@@ -460,7 +432,7 @@ function handleCorrect() {
     stopAliveMonitor();
     document.getElementById('mic-indicator').classList.remove('listening');
     document.getElementById('color-card').classList.add('correct');
-    setDebug("-", "-", "-", "-", "ПОБЕДА!", "debug-success");
+    logDebug("ПОБЕДА!", "success");
     speak(`Молодец! Это ${COLORS[currentIdx].name}!`);
     found.add(currentIdx);
     setTimeout(() => {
@@ -479,7 +451,7 @@ function showNextColor() {
     const c = COLORS[currentIdx];
     document.getElementById('instruction-text').textContent = "Какой это цвет?";
     document.getElementById('color-card').style.backgroundColor = c.hex;
-    setDebug("Новое задание", "-", "-", "-", `Цель: ${c.name}`);
+    logDebug(`Цель: ${c.name}`, "event");
     speak("Назови цвет!");
 }
 
@@ -492,6 +464,7 @@ function speak(text) {
     u.lang = 'ru-RU'; u.rate = 0.85; u.pitch = 1.1;
     u.onend = () => {
         isSpeaking = false;
+        logDebug("Голос закончил", "event");
         setTimeout(() => { if (!isProcessing) restartListening(); }, 500);
     };
     speechSynthesis.speak(u);
@@ -502,7 +475,7 @@ function showWin() {
     document.getElementById('game-screen').style.display = 'none';
     document.getElementById('win-screen').style.display = 'flex';
     speak('Поздравляю! Ты назвала все цвета!');
-    const emojis = ['⭐','🎈','🎉','','🌈','💖'];
+    const emojis = ['⭐','🎈','','','','💖'];
     for (let i = 0; i < 30; i++) {
         setTimeout(() => {
             const el = document.createElement('div');
