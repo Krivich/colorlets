@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Назови цвет</title>
     <style>
+        /* Стили те же, что и раньше, без изменений */
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: -apple-system, system-ui, sans-serif;
@@ -30,7 +31,7 @@
         .diag-list li::before { content: '⏳ '; }
         .diag-list li.ok::before { content: '✅ '; }
         .diag-list li.fail::before { content: '❌ '; }
-        .diag-list li.warn::before { content: '⚠️ '; }
+        .diag-list li.warn::before { content: '️ '; }
         .diag-list li.pending { color: #bbb; }
         #action-btn {
             padding: 18px 50px; font-size: 1.6rem;
@@ -122,13 +123,13 @@
 <body>
 
 <div id="start-screen">
-    <h1>🎤 Назови цвет</h1>
+    <h1> Назови цвет</h1>
     <ul class="diag-list" id="diag-list">
         <li id="d-api" class="pending">API распознавания речи</li>
         <li id="d-mic" class="pending">Доступ к микрофону</li>
         <li id="d-audio" class="pending">Аудиопоток (звук идёт)</li>
     </ul>
-    <button id="action-btn" onclick="runDiagnostics()">🔍 Проверить микрофон</button>
+    <button id="action-btn" onclick="runDiagnostics()"> Проверить микрофон</button>
     <div class="diag-hint" id="diag-hint">Нажми кнопку выше — браузер спросит разрешение</div>
 </div>
 
@@ -336,9 +337,8 @@ function startGame() {
 function initRecognition() {
     recognition = new SpeechRecognition();
     recognition.lang = 'ru-RU';
-    // Для мобильных лучше continuous=true, но мы будем сами останавливать
     recognition.continuous = true; 
-    recognition.interimResults = false;
+    recognition.interimResults = true; // ВАЖНО: ловим промежуточные результаты
     recognition.maxAlternatives = 5;
 
     recognition.onstart = () => {
@@ -350,22 +350,42 @@ function initRecognition() {
 
     recognition.onresult = (e) => {
         if (isSpeaking || isProcessing) return;
+        
+        // Берем последний результат из списка
         const last = e.results[e.results.length - 1];
-        if (!last.isFinal) return; 
-        
         const transcript = last[0].transcript.toLowerCase().trim();
-        log(`Распознано: "${transcript}"`);
-        setDebug("Обработка...", transcript, "-", "-", "-");
         
-        try { recognition.stop(); } catch(e){}
-        analyzeAnswer(transcript);
+        // Обновляем отладку даже для промежуточных результатов
+        setDebug(last.isFinal ? "Обработка..." : "Слышу...", transcript, "-", "-", "-");
+
+        // Если результат финальный ИЛИ если мы уже видим хорошее совпадение в промежуточном
+        // (для ускорения реакции на мобильных)
+        if (last.isFinal || transcript.length > 3) {
+             // Пробуем распознать
+             const targetColor = COLORS[currentIdx];
+             const match = findBestMatchInStream(transcript, targetColor.name);
+             
+             // Если расстояние маленькое, считаем что ребенок ответил, даже если браузер не поставил isFinal
+             const threshold = Math.max(2, Math.floor(targetColor.name.length / 2));
+             
+             if (match.distance <= threshold) {
+                 log(`Распознано (промежуточно): "${transcript}" -> ${match.fragment}`);
+                 try { recognition.stop(); } catch(e){} // Останавливаем слушание, чтобы ответить
+                 analyzeAnswer(transcript);
+                 return;
+             }
+        }
     };
 
     recognition.onerror = (e) => {
         isRecognizing = false;
         log(`Ошибка: ${e.error}`);
-        setDebug(`Ошибка: ${e.error}`, "-", "-", "-", "-", "debug-fail");
-        setTimeout(restartListening, 500);
+        // Не показываем ошибку пользователю при no-speech, просто рестартуем
+        if (e.error !== 'no-speech') {
+             setDebug(`Ошибка: ${e.error}`, "-", "-", "-", "-", "debug-fail");
+        }
+        // Долгая пауза перед рестартом, чтобы не щелкало
+        setTimeout(restartListening, 1000);
     };
     
     recognition.onend = () => {
@@ -373,7 +393,8 @@ function initRecognition() {
         document.getElementById('mic-indicator').classList.remove('listening');
         if (!isProcessing && !isSpeaking && document.getElementById('game-screen').style.display === 'flex') {
             setDebug("Перезапуск...", "-", "-", "-", "-");
-            setTimeout(restartListening, 300);
+            // Пауза перед рестартом
+            setTimeout(restartListening, 500);
         }
     };
     
@@ -389,7 +410,7 @@ function restartListening() {
         recognition.start(); 
         setDebug("Слушаю...", "-", "-", "-", "-");
     } catch(e) {
-        setTimeout(() => { if (!isRecognizing && !isSpeaking) try { recognition.start(); } catch(err) {} }, 1000);
+        setTimeout(() => { if (!isRecognizing && !isSpeaking) try { recognition.start(); } catch(err) {} }, 1500);
     }
 }
 
@@ -481,7 +502,7 @@ function showWin() {
     document.getElementById('game-screen').style.display = 'none';
     document.getElementById('win-screen').style.display = 'flex';
     speak('Поздравляю! Ты назвала все цвета!');
-    const emojis = ['⭐','🎈','🎉','🍭','🌈','💖'];
+    const emojis = ['⭐','🎈','🎉','','🌈','💖'];
     for (let i = 0; i < 30; i++) {
         setTimeout(() => {
             const el = document.createElement('div');
