@@ -85,20 +85,16 @@
         .debug-success { color: #4caf50; font-weight: bold; }
         .debug-info { color: #ff9800; }
 
-        /* Кнопка прослушивания */
-        #play-last-btn {
-            margin-top: 10px;
-            padding: 8px 15px;
-            background: #607d8b;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            font-size: 0.9rem;
-            cursor: pointer;
-            display: none; /* Скрыта по умолчанию */
-            align-self: center;
+        /* Кнопки отладки */
+        .debug-controls {
+            display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; justify-content: center;
         }
-        #play-last-btn:hover { background: #455a64; }
+        .debug-btn {
+            padding: 8px 12px; background: #607d8b; color: white; border: none;
+            border-radius: 5px; font-size: 0.85rem; cursor: pointer;
+        }
+        .debug-btn:hover { background: #455a64; }
+        .debug-btn:disabled { background: #ccc; cursor: not-allowed; }
 
         #win-screen { display:none; position:absolute; inset:0; z-index:10; flex-direction:column; align-items:center; justify-content:center; background:#f8f9fa; }
         #win-screen h1 { font-size:3rem; color:#4caf50; margin-bottom:10px; }
@@ -117,12 +113,14 @@
         <li id="d-audio" class="pending">Аудиопоток (звук идёт)</li>
         <li id="d-loop" class="pending">Цифровая петля (Logic)</li>
         <li id="d-rec" class="pending">Тест записи (Mic->Speaker)</li>
+        <li id="d-stt" class="pending">Тест STT (Mic->Google->Text)</li>
     </ul>
     
     <div id="volume-meter"><div id="volume-bar"></div></div>
     
     <button id="action-btn" onclick="runFullDiagnostics()"> Запустить проверку</button>
     <button id="record-btn" style="display:none;" onclick="testRecording()"> 🎙 Записать тест (3 сек)</button>
+    <button id="stt-test-btn" style="display:none;" onclick="testSTTWithRecord()"> 🧪 Тест STT с записью</button>
     
     <div class="diag-hint" id="diag-hint">Нажми "Запустить проверку" для старта.</div>
 </div>
@@ -136,7 +134,11 @@
     <div id="debug-panel">
         <div class="debug-line debug-event">Ожидание запуска...</div>
     </div>
-    <button id="play-last-btn">🔊 Прослушать последнюю посылку STT</button>
+    
+    <div class="debug-controls">
+        <button id="play-last-btn" class="debug-btn" style="display:none;">🔊 Слушать посылку STT</button>
+        <button id="play-tts-btn" class="debug-btn" style="display:none;">🔊 Слушать TTS ответ</button>
+    </div>
 </div>
 
 <div id="win-screen">
@@ -166,7 +168,9 @@ let isSpeaking = false;
 
 // Для записи последней посылки
 let lastAudioBlob = null;
+let lastTTSBlob = null; // Для записи ответа TTS (если нужно)
 const playBtn = document.getElementById('play-last-btn');
+const playTTSBtn = document.getElementById('play-tts-btn');
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -240,6 +244,7 @@ function findBestMatchInStream(rawPhrase, targetColorName) {
 async function runFullDiagnostics() {
     const btn = document.getElementById('action-btn');
     const recBtn = document.getElementById('record-btn');
+    const sttBtn = document.getElementById('stt-test-btn');
     const hint = document.getElementById('diag-hint');
     const list = document.getElementById('diag-list');
     
@@ -299,6 +304,7 @@ async function runFullDiagnostics() {
 
 function testRecording() {
     const recBtn = document.getElementById('record-btn');
+    const sttBtn = document.getElementById('stt-test-btn');
     const meter = document.getElementById('volume-meter');
     const bar = document.getElementById('volume-bar');
     const hint = document.getElementById('diag-hint');
@@ -328,13 +334,8 @@ function testRecording() {
         
         audio.play();
         audio.onended = () => {
-            hint.textContent = "Если ты слышал свой голос четко - жми Играть!";
-            const playBtnGame = document.createElement('button');
-            playBtnGame.id = 'action-btn';
-            playBtnGame.className = 'ready';
-            playBtnGame.textContent = '▶ Играть';
-            playBtnGame.onclick = startGame;
-            document.getElementById('start-screen').appendChild(playBtnGame);
+            hint.textContent = "Если ты слышал свой голос четко - жми Тест STT!";
+            sttBtn.style.display = 'block';
         };
     };
 
@@ -351,6 +352,95 @@ function testRecording() {
         mediaRecorder.stop();
         clearInterval(volInterval);
     }, 3000);
+}
+
+// ==========================================
+// ТЕСТ STT С ЗАПИСЬЮ
+// ==========================================
+function testSTTWithRecord() {
+    const sttBtn = document.getElementById('stt-test-btn');
+    const hint = document.getElementById('diag-hint');
+    const meter = document.getElementById('volume-meter');
+    const bar = document.getElementById('volume-bar');
+    
+    sttBtn.disabled = true;
+    sttBtn.textContent = "Тестирую STT...";
+    meter.style.display = 'block';
+    hint.textContent = "Скажи 'Красный'...";
+    logDebug("Запуск теста STT...", "event");
+    
+    document.getElementById('d-stt').className = 'pending';
+
+    // 1. Запускаем параллельную запись
+    let mediaRecorder = new MediaRecorder(micStream);
+    let recordedChunks = [];
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+    mediaRecorder.start();
+
+    // 2. Запускаем распознавание
+    const testRec = new SpeechRecognition();
+    testRec.lang = 'ru-RU';
+    testRec.continuous = false;
+    testRec.interimResults = true;
+    testRec.maxAlternatives = 5;
+
+    let finalTranscript = "";
+
+    testRec.onresult = (e) => {
+        const transcript = e.results[0][0].transcript;
+        if (e.results[0].isFinal) {
+            finalTranscript = transcript;
+        }
+        logDebug(`STT Interim: "${transcript}"`, "text");
+    };
+
+    testRec.onerror = (e) => {
+        logDebug(`STT Error: ${e.error}`, "error");
+    };
+
+    testRec.onend = () => {
+        // Останавливаем запись
+        if (mediaRecorder.state === 'recording') mediaRecorder.stop();
+    };
+
+    try { testRec.start(); } catch(e) {
+        logDebug("Не удалось запустить STT", "error");
+        sttBtn.disabled = false; sttBtn.textContent = "🧪 Тест STT с записью";
+        return;
+    }
+
+    // Таймаут 4 секунды
+    setTimeout(() => {
+        if (testRec) { try { testRec.stop(); } catch(e){} }
+        if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+    }, 4000);
+
+    // Когда запись остановлена
+    mediaRecorder.onstop = () => {
+        lastAudioBlob = new Blob(recordedChunks, { 'type' : 'audio/ogg; codecs=opus' });
+        playBtn.style.display = 'inline-block';
+        
+        document.getElementById('d-stt').className = 'ok';
+        sttBtn.style.display = 'none';
+        meter.style.display = 'none';
+        
+        const resultMsg = finalTranscript ? `"${finalTranscript}"` : "(пусто/ошибка)";
+        hint.textContent = `STT Вернул: ${resultMsg}. Послушай запись.`;
+        logDebug(`Тест завершен. STT результат: ${resultMsg}`, finalTranscript ? "success" : "warn");
+        
+        // Показываем кнопку "Играть" если все ок
+        if (finalTranscript) {
+             const playBtnGame = document.createElement('button');
+             playBtnGame.id = 'action-btn';
+             playBtnGame.className = 'ready';
+             playBtnGame.textContent = '▶ Играть';
+             playBtnGame.onclick = startGame;
+             document.getElementById('start-screen').appendChild(playBtnGame);
+        } else {
+             sttBtn.disabled = false; sttBtn.textContent = "🧪 Повторить тест STT";
+             sttBtn.style.display = 'block';
+        }
+    };
 }
 
 function finishDiag(passed, msg) {
@@ -384,16 +474,19 @@ function startGame() {
     document.getElementById('start-screen').style.display = 'none';
     document.getElementById('game-screen').style.display = 'flex';
     
-    // Настраиваем кнопку прослушивания
+    // Настраиваем кнопки прослушивания
     playBtn.onclick = () => {
         if (lastAudioBlob) {
             const url = URL.createObjectURL(lastAudioBlob);
             const audio = new Audio(url);
-            logDebug("Воспроизведение последней посылки...", "info");
+            logDebug("Воспроизведение последней посылки STT...", "info");
             audio.play();
-        } else {
-            logDebug("Нет сохраненной записи.", "error");
         }
+    };
+    
+    playTTSBtn.onclick = () => {
+         // Здесь можно добавить логику записи TTS, если нужно
+         logDebug("Функция в разработке", "info");
     };
 
     initRecognition(); startAliveMonitor(); showNextColor();
@@ -406,10 +499,6 @@ function initRecognition() {
     recognition.interimResults = true; 
     recognition.maxAlternatives = 5;
 
-    // ВАЖНО: Мы не можем получить прямой доступ к аудио-потоку Web Speech API.
-    // Но мы можем имитировать запись того, что "видит" пользователь, используя наш микрофон.
-    // Для этого мы будем писать звук параллельно с распознаванием.
-    
     let mediaRecorder = null;
     let recordedChunks = [];
 
@@ -419,20 +508,17 @@ function initRecognition() {
         document.getElementById('mic-indicator').classList.add('listening');
         logDebug(">>> Слушаю...", "event");
         
-        // Запускаем параллельную запись для отладки
+        // Параллельная запись для отладки
         try {
             mediaRecorder = new MediaRecorder(micStream);
             recordedChunks = [];
             mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
             mediaRecorder.onstop = () => {
                 lastAudioBlob = new Blob(recordedChunks, { 'type' : 'audio/ogg; codecs=opus' });
-                playBtn.style.display = 'block'; // Показываем кнопку
-                logDebug("Запись посылки завершена. Кнопка активна.", "info");
+                playBtn.style.display = 'inline-block';
             };
             mediaRecorder.start();
-        } catch(e) {
-            logDebug("Не удалось запустить параллельную запись: " + e.message, "error");
-        }
+        } catch(e) {}
     };
 
     recognition.onresult = (e) => {
