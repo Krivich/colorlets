@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Назови цвет</title>
     <style>
-        /* Стили остались прежними, без изменений */
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: -apple-system, system-ui, sans-serif;
@@ -87,9 +86,7 @@
             0%,100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(244,67,54,0.5); }
             50% { transform: scale(1.12); box-shadow: 0 0 0 12px rgba(244,67,54,0); }
         }
-        #status-text {
-            margin-top: 10px; font-size: 0.9rem; color: #888; min-height: 20px;
-        }
+        #status-text { margin-top: 10px; font-size: 0.9rem; color: #888; min-height: 20px; }
         #heard { margin-top: 15px; font-size: 1rem; color: #999; min-height: 24px; text-align: center; }
         #win-screen {
             display:none; position:absolute; inset:0; z-index:10;
@@ -171,28 +168,70 @@ function levenshtein(a, b) {
     return matrix[b.length][a.length];
 }
 
-function findBestMatchInPhrase(phrase) {
-    // Оставляем только кириллицу и пробелы, убираем латиницу и цифры
-    const cleanPhrase = phrase.replace(/[^а-яё\s]/gi, '').trim();
-    if (!cleanPhrase) return { color: null, distance: Infinity, word: "" };
+// ==========================================
+// ТРАНСЛИТЕРАЦИЯ И ПОИСК В ПОТОКЕ
+// ==========================================
+const translitMap = {
+    'a': 'а', 'b': 'б', 'v': 'в', 'g': 'г', 'd': 'д', 'e': 'е', 'yo': 'ё', 'zh': 'ж', 'z': 'з',
+    'i': 'и', 'y': 'й', 'k': 'к', 'l': 'л', 'm': 'м', 'n': 'н', 'o': 'о', 'p': 'п', 'r': 'р',
+    's': 'с', 't': 'т', 'u': 'у', 'f': 'ф', 'kh': 'х', 'ts': 'ц', 'ch': 'ч', 'sh': 'ш', 'shch': 'щ',
+    '"': 'ъ', 'y\'': 'ы', '`': 'ь', 'yu': 'ю', 'ya': 'я',
+    'j': 'й', 'w': 'в', 'q': 'к', 'x': 'кс'
+};
 
-    const words = cleanPhrase.split(/\s+/);
-    let bestGlobalMatch = { color: null, distance: Infinity, word: "" };
-
-    words.forEach(word => {
-        if (word.length < 2) return;
-        COLORS.forEach(c => {
-            const dist = levenshtein(word, c.name.toLowerCase());
-            if (dist < bestGlobalMatch.distance) {
-                bestGlobalMatch = { color: c, distance: dist, word: word };
-            }
-        });
+function transliterate(text) {
+    let result = text.toLowerCase();
+    // Сначала заменяем сложные сочетания (2 буквы)
+    ['shch', 'sh', 'ch', 'ts', 'kh', 'yu', 'ya', 'yo', 'zh', 'y\''].forEach(seq => {
+        const regex = new RegExp(seq, 'g');
+        result = result.replace(regex, translitMap[seq]);
     });
-    return bestGlobalMatch;
+    // Потом одиночные буквы
+    for (let eng in translitMap) {
+        if (eng.length === 1) {
+            const regex = new RegExp(eng, 'g');
+            result = result.replace(regex, translitMap[eng]);
+        }
+    }
+    // Удаляем всё, кроме кириллицы
+    return result.replace(/[^а-яё]/g, '');
+}
+
+function findBestMatchInStream(rawPhrase, targetColorName) {
+    // 1. Транслитерируем и очищаем поток
+    const stream = transliterate(rawPhrase);
+    if (!stream) return { distance: Infinity, fragment: "" };
+
+    const target = targetColorName.toLowerCase();
+    const targetLen = target.length;
+    
+    let bestDist = Infinity;
+    let bestFragment = "";
+
+    // 2. Скользящее окно по потоку
+    // Проверяем окна размером от (targetLen - 2) до (targetLen + 2)
+    const minWin = Math.max(2, targetLen - 2);
+    const maxWin = targetLen + 3;
+
+    for (let winSize = minWin; winSize <= maxWin; winSize++) {
+        for (let i = 0; i <= stream.length - winSize; i++) {
+            const fragment = stream.substr(i, winSize);
+            const dist = levenshtein(fragment, target);
+            
+            // Нормализуем расстояние относительно длины окна, чтобы короткие совпадения не выигрывали зря
+            // Но для простоты используем сырое расстояние, так как мы ищем конкретное слово
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestFragment = fragment;
+            }
+        }
+    }
+
+    return { distance: bestDist, fragment: bestFragment, fullStream: stream };
 }
 
 // ==========================================
-// ДИАГНОСТИКА (без изменений)
+// ДИАГНОСТИКА
 // ==========================================
 async function runDiagnostics() {
     const btn = document.getElementById('action-btn');
@@ -220,13 +259,13 @@ async function runDiagnostics() {
         analyser = audioCtx.createAnalyser(); analyser.fftSize = 256; source.connect(analyser);
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
         let hasSignal = false;
+        const startT = Date.now();
         await new Promise(resolve => {
             const iv = setInterval(() => {
                 analyser.getByteFrequencyData(dataArray);
                 if (dataArray.reduce((a,b)=>a+b,0)/dataArray.length > 5) hasSignal = true;
-                if (Date.now() - Date.now() + 800 > 800) { clearInterval(iv); resolve(); } // fixed timer logic
+                if (Date.now() - startT > 800) { clearInterval(iv); resolve(); }
             }, 50);
-             setTimeout(resolve, 800); // safety timeout
         });
         mark('d-audio', hasSignal ? 'ok' : 'warn', hasSignal ? '' : 'Микрофон тихий.');
     } catch(e) { mark('d-audio', 'warn', 'Не удалось проверить поток.'); }
@@ -265,7 +304,7 @@ function startGame() {
 function initRecognition() {
     recognition = new SpeechRecognition();
     recognition.lang = 'ru-RU';
-    recognition.continuous = true; // Включаем непрерывный режим для быстрой реакции
+    recognition.continuous = true; 
     recognition.interimResults = false;
     recognition.maxAlternatives = 5;
 
@@ -278,24 +317,14 @@ function initRecognition() {
 
     recognition.onresult = (e) => {
         if (isSpeaking || isProcessing) return;
-        // Берем самый свежий результат
         const last = e.results[e.results.length - 1];
-        if (!last.isFinal) return; // Ждем финального результата, но continuous=true делает это быстрее
+        if (!last.isFinal) return; 
         
         const transcript = last[0].transcript.toLowerCase().trim();
-        
-        // ФИЛЬТР МУСОРА: если в тексте нет русских букв, игнорируем
-        if (!/[а-яё]/i.test(transcript)) {
-            log(`Игнорирую нерусский текст: "${transcript}"`, 'warn');
-            return;
-        }
-
         log(`Распознано: "${transcript}"`);
         document.getElementById('heard').textContent = `Услышала: «${transcript}»`;
         
-        // Сразу останавливаем слушание, чтобы обработать ответ
         try { recognition.stop(); } catch(e){}
-        
         analyzeAnswer(transcript);
     };
 
@@ -326,28 +355,43 @@ function restartListening() {
 
 function analyzeAnswer(text) {
     const targetColor = COLORS[currentIdx];
-    const match = findBestMatchInPhrase(text);
+    // Используем новый алгоритм поиска в потоке
+    const match = findBestMatchInStream(text, targetColor.name);
     
-    if (!match.color) {
-        log("Цветов в фразе не найдено");
-        speak("Попробуй назвать цвет!");
+    log(`Поток: "${match.fullStream}". Лучший фрагмент: "${match.fragment}" (расст: ${match.distance})`);
+
+    if (match.distance === Infinity) {
+        speak("Я ничего не услышала.");
         return;
     }
 
-    const threshold = Math.max(2, Math.floor(match.color.name.length / 2));
-    log(`Цель: ${targetColor.name}. Слово: "${match.word}" -> ${match.color.name} (расст: ${match.distance}, порог: ${threshold})`);
+    // Порог чувствительности
+    const threshold = Math.max(2, Math.floor(targetColor.name.length / 2));
 
     if (match.distance <= threshold) {
-        if (match.color.name === targetColor.name) {
-            log(`Верно!`, 'success');
-            handleCorrect();
-        } else {
-            log(`Похоже на ${match.color.name}, но нужно ${targetColor.name}`);
-            speak(`Это ${match.color.name}, ${match.color.hint}. А нужен ${targetColor.name}.`);
-        }
+        log(`Верно! (${match.distance} отличий)`, 'success');
+        handleCorrect();
     } else {
-        log(`Слово "${match.word}" слишком далеко (${match.distance})`);
-        speak("Не расслышала название цвета. Попробуй ещё раз!");
+        // Если похоже на другой цвет из списка
+        let closestOtherColor = null;
+        let minOtherDist = Infinity;
+        COLORS.forEach(c => {
+            if (c.name !== targetColor.name) {
+                const m = findBestMatchInStream(text, c.name);
+                if (m.distance < minOtherDist) {
+                    minOtherDist = m.distance;
+                    closestOtherColor = c;
+                }
+            }
+        });
+
+        if (closestOtherColor && minOtherDist <= threshold) {
+             log(`Похоже на ${closestOtherColor.name}`);
+             speak(`Это ${closestOtherColor.name}, ${closestOtherColor.hint}. А нужен ${targetColor.name}.`);
+        } else {
+             log(`Не похоже ни на один цвет (${match.distance})`);
+             speak("Не расслышала. Попробуй ещё раз!");
+        }
     }
 }
 
