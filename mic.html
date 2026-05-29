@@ -35,7 +35,6 @@
         .diag-list li.fail::before { content: '❌ '; }
         .diag-list li.warn::before { content: '⚠️ '; }
         .diag-list li.pending { color: #bbb; }
-        .diag-list li.pending::before { content: '⏳ '; }
 
         #action-btn {
             padding: 18px 50px; font-size: 1.6rem;
@@ -77,7 +76,6 @@
             border-radius: 50%; background: #e0e0e0;
             display: flex; align-items: center; justify-content: center;
             font-size: 1.8rem; transition: all 0.3s;
-            position: relative;
         }
         #mic-indicator.alive {
             background: #c8e6c9;
@@ -97,12 +95,8 @@
         }
         
         #status-text {
-            margin-top: 10px;
-            font-size: 0.9rem;
-            color: #888;
-            min-height: 20px;
+            margin-top: 10px; font-size: 0.9rem; color: #888; min-height: 20px;
         }
-
         #heard { margin-top: 15px; font-size: 1rem; color: #999; min-height: 24px; text-align: center; }
 
         /* --- ПОБЕДА --- */
@@ -128,7 +122,7 @@
         <li id="d-audio" class="pending">Аудиопоток (звук идёт)</li>
     </ul>
     <button id="action-btn" onclick="runDiagnostics()">🔍 Проверить микрофон</button>
-    <div class="diag-hint" id="diag-hint">Нажми кнопку выше — браузер спросит разрешение на микрофон</div>
+    <div class="diag-hint" id="diag-hint">Нажми кнопку выше — браузер спросит разрешение</div>
 </div>
 
 <!-- ИГРА -->
@@ -148,6 +142,9 @@
 </div>
 
 <script>
+// ==========================================
+// КОНФИГУРАЦИЯ ЦВЕТОВ
+// ==========================================
 const COLORS = [
     { name:"Красный",   hex:"#E53935", v:['красн','касный','красньй','крсный'] },
     { name:"Синий",     hex:"#1E88E5", v:['син','сипий','синьй','снний'] },
@@ -163,13 +160,24 @@ const COLORS = [
 let currentIdx = 0, isProcessing = false, found = new Set();
 let recognition = null, audioCtx = null, analyser = null, micStream = null;
 let aliveCheckInterval = null;
+let isRecognizing = false; // Флаг состояния движка
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+function log(msg, type='info') {
+    const styles = {
+        info: 'color: #2196F3',
+        success: 'color: #4caf50; font-weight: bold',
+        warn: 'color: #FF9800',
+        error: 'color: #f44336'
+    };
+    console.log(`%c[GAME] ${msg}`, styles[type] || styles.info);
+}
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// =============================================
-// САМОДИАГНОСТИКА (упрощённая и надёжная)
-// =============================================
+// ==========================================
+// ДИАГНОСТИКА
+// ==========================================
 async function runDiagnostics() {
     const btn = document.getElementById('action-btn');
     const hint = document.getElementById('diag-hint');
@@ -180,6 +188,7 @@ async function runDiagnostics() {
     btn.disabled = true;
     list.classList.add('active');
     hint.textContent = '';
+    log('Запуск диагностики...');
 
     let passed = 0;
     function mark(id, status, msg) {
@@ -193,28 +202,32 @@ async function runDiagnostics() {
     // 1. API
     if (!SpeechRecognition) {
         mark('d-api', 'fail');
-        finishDiag(0, 'Браузер не поддерживает распознавание речи. Откройте в Chrome или Edge.');
+        log('API распознавания не найдено', 'error');
+        finishDiag(0, 'Браузер не поддерживает распознавание. Нужен Chrome или Edge.');
         return;
     }
     mark('d-api', 'ok');
+    log('API распознавания доступен');
     await sleep(200);
 
     // 2. Микрофон
     try {
+        log('Запрос доступа к микрофону...');
         micStream = await navigator.mediaDevices.getUserMedia({ 
             audio: { echoCancellation: true, noiseSuppression: true } 
         });
         mark('d-mic', 'ok');
+        log('Доступ к микрофону получен', 'success');
     } catch (e) {
         mark('d-mic', 'fail');
+        log(`Ошибка микрофона: ${e.name}`, 'error');
         const messages = {
-            'NotAllowedError': 'Доступ запрещён. Нажмите «Разрешить» во всплывающем окне.',
-            'NotFoundError': 'Микрофон не найден. Подключите микрофон или проверьте настройки.',
-            'NotReadableError': 'Микрофон занят другим приложением. Закройте Zoom/Telegram/звонки.',
-            'OverconstrainedError': 'Микрофон не поддерживается. Попробуйте другой браузер.',
-            'SecurityError': 'Этот домен блокирует микрофон. Используйте localhost или GitHub Pages.'
+            'NotAllowedError': 'Доступ запрещён. Разрешите микрофон в браузере.',
+            'NotFoundError': 'Микрофон не найден.',
+            'NotReadableError': 'Микрофон занят другим приложением.',
+            'SecurityError': 'Домен блокирует микрофон. Используйте HTTPS или localhost.'
         };
-        finishDiag(passed, messages[e.name] || `Ошибка: ${e.name}. ${e.message}`);
+        finishDiag(passed, messages[e.name] || `Ошибка: ${e.message}`);
         return;
     }
     await sleep(200);
@@ -243,15 +256,14 @@ async function runDiagnostics() {
         });
         
         mark('d-audio', hasSignal ? 'ok' : 'warn', 
-             hasSignal ? '' : 'Микрофон подключён, но очень тихо. Говорите громче.');
+             hasSignal ? '' : 'Микрофон тихий. Говорите громче.');
+        log(hasSignal ? 'Аудиосигнал есть' : 'Аудиосигнал слабый', hasSignal ? 'success' : 'warn');
     } catch(e) {
-        mark('d-audio', 'warn', 'Не удалось проверить аудиопоток, но микрофон доступен.');
+        mark('d-audio', 'warn', 'Не удалось проверить поток.');
+        log('Ошибка анализа потока', 'error');
     }
 
-    // Убрали шаг 4 (тест распознавания), так как он ненадёжен в автоматическом режиме.
-    // Распознавание проверим уже в игре.
-
-    finishDiag(passed >= 2 ? 3 : passed); // Если микрофон и API есть, считаем что всё ок
+    finishDiag(passed >= 2 ? 3 : passed);
 }
 
 function finishDiag(passed) {
@@ -261,22 +273,23 @@ function finishDiag(passed) {
     btn.disabled = false;
     btn.classList.remove('checking');
 
-    if (passed >= 2) { // Достаточно API и Микрофона
+    if (passed >= 2) {
         btn.textContent = '▶ Играть';
         btn.classList.add('ready');
         btn.onclick = startGame;
-        hint.textContent = 'Микрофон готов! Нажми «Играть».';
+        hint.textContent = 'Всё готово! Нажми «Играть».';
+        log('Диагностика пройдена успешно', 'success');
     } else {
         btn.textContent = '🔄 Попробовать снова';
         btn.classList.add('error');
         btn.onclick = () => location.reload();
-        hint.textContent = 'Проверьте настройки браузера и нажмите снова.';
+        hint.textContent = 'Что-то пошло не так. Обновите страницу.';
     }
 }
 
-// =============================================
-// ЖИВАЯ ПРОВЕРКА ВО ВРЕМЯ ИГРЫ
-// =============================================
+// ==========================================
+// МОНИТОРИНГ МИКРОФОНА (ВИЗУАЛИЗАЦИЯ)
+// ==========================================
 function startAliveMonitor() {
     const mic = document.getElementById('mic-indicator');
     const status = document.getElementById('status-text');
@@ -293,7 +306,6 @@ function startAliveMonitor() {
             status.textContent = 'Слышу звук...';
         } else {
             mic.classList.remove('alive');
-            // Не убираем listening, если распознавание активно
         }
     }, 100);
 }
@@ -304,9 +316,9 @@ function stopAliveMonitor() {
     document.getElementById('status-text').textContent = '';
 }
 
-// =============================================
-// ИГРА
-// =============================================
+// ==========================================
+// ЛОГИКА ИГРЫ
+// ==========================================
 function startGame() {
     found.clear(); currentIdx = 0;
     document.getElementById('start-screen').style.display = 'none';
@@ -320,53 +332,92 @@ function startGame() {
 function initRecognition() {
     recognition = new SpeechRecognition();
     recognition.lang = 'ru-RU';
-    recognition.continuous = true;
+    recognition.continuous = false; // Стабильнее для мобильных
     recognition.interimResults = false;
     recognition.maxAlternatives = 5;
 
     recognition.onstart = () => {
+        isRecognizing = true;
         document.getElementById('mic-indicator').classList.add('listening');
         document.getElementById('status-text').textContent = 'Слушаю...';
+        log('Распознавание запущено');
     };
 
     recognition.onresult = (e) => {
         if (isProcessing) return;
         const last = e.results[e.results.length - 1];
         if (!last.isFinal) return;
+        
         const transcript = last[0].transcript.toLowerCase().trim();
+        const confidence = Math.round(last[0].confidence * 100);
+        
+        log(`Распознано: "${transcript}" (уверенность: ${confidence}%)`);
         document.getElementById('heard').textContent = `Услышала: «${transcript}»`;
-        if (checkMatch(transcript)) handleCorrect();
+        
+        if (checkMatch(transcript)) {
+            log(`СОВПАДЕНИЕ! Правильный ответ.`, 'success');
+            handleCorrect();
+        } else {
+            log(`Не совпало с целевым цветом.`);
+        }
     };
 
     recognition.onerror = (e) => {
-        console.warn('Recognition error:', e.error);
-        document.getElementById('status-text').textContent = 'Ошибка распознавания: ' + e.error;
-        restartListening();
+        if (e.error === 'no-speech') {
+            log('Тишина (no-speech). Перезапуск...', 'warn');
+        } else {
+            log(`Ошибка распознавания: ${e.error}`, 'error');
+            document.getElementById('status-text').textContent = 'Ошибка: ' + e.error;
+        }
+        isRecognizing = false;
+        // Безопасный перезапуск с задержкой
+        setTimeout(restartListening, 500);
     };
     
     recognition.onend = () => {
+        isRecognizing = false;
         document.getElementById('mic-indicator').classList.remove('listening');
-        restartListening();
+        log('Сессия распознавания завершена (onend)');
+        
+        if (!isProcessing && document.getElementById('game-screen').style.display === 'flex') {
+            log('Попытка перезапуска...');
+            setTimeout(restartListening, 300);
+        }
     };
     
     try { recognition.start(); } catch(e) {
-        console.error('Failed to start recognition:', e);
-        document.getElementById('status-text').textContent = 'Не удалось запустить распознавание.';
+        log(`Не удалось запустить: ${e.message}`, 'error');
     }
 }
 
 function restartListening() {
-    if (!isProcessing && document.getElementById('game-screen').style.display === 'flex') {
-        try { 
-            recognition.stop(); // Сначала останавливаем
-            setTimeout(() => recognition.start(), 200); // Потом запускаем заново
-        } catch(e) {}
+    if (isRecognizing) {
+        log('Пропуск запуска: уже слушает');
+        return;
+    }
+    if (isProcessing) {
+        log('Пропуск запуска: обработка ответа');
+        return;
+    }
+    if (document.getElementById('game-screen').style.display === 'none') return;
+
+    try { 
+        recognition.start(); 
+        log('Распознавание перезапущено');
+    } catch(e) {
+        log(`Ошибка перезапуска: ${e.message}`, 'error');
+        // Если поймали InvalidState, пробуем ещё раз через секунду
+        setTimeout(() => {
+            if (!isRecognizing) try { recognition.start(); } catch(err) {}
+        }, 1000);
     }
 }
 
 function checkMatch(text) {
     const c = COLORS[currentIdx];
+    // Точное совпадение
     if (text.includes(c.name.toLowerCase())) return true;
+    // Совпадение по вариантам (детский лепет)
     return c.v.some(v => text.includes(v));
 }
 
@@ -375,28 +426,39 @@ function handleCorrect() {
     stopAliveMonitor();
     document.getElementById('mic-indicator').classList.remove('listening');
     document.getElementById('color-card').classList.add('correct');
-    speak(`Правильно! Это ${COLORS[currentIdx].name}!`);
+    
+    const praise = ["Молодец!", "Правильно!", "Умница!", "Супер!"][Math.floor(Math.random()*4)];
+    speak(`${praise} Это ${COLORS[currentIdx].name}!`);
     found.add(currentIdx);
 
     setTimeout(() => {
         document.getElementById('color-card').classList.remove('correct');
         document.getElementById('heard').textContent = '';
-        if (found.size >= COLORS.length) { showWin(); }
-        else { showNextColor(); startAliveMonitor(); }
+        
+        if (found.size >= COLORS.length) { 
+            showWin(); 
+        } else { 
+            showNextColor(); 
+            startAliveMonitor(); 
+        }
+        
         isProcessing = false;
         restartListening();
-    }, 1200);
+    }, 1500);
 }
 
 function showNextColor() {
     const available = [];
     COLORS.forEach((_, i) => { if (!found.has(i)) available.push(i); });
     currentIdx = available[Math.floor(Math.random() * available.length)];
+    
     const c = COLORS[currentIdx];
     const nameEl = document.getElementById('color-name');
     nameEl.textContent = c.name;
     nameEl.style.color = ['Белый','Желтый'].includes(c.name) ? '#333' : c.hex;
     document.getElementById('color-card').style.backgroundColor = c.hex;
+    
+    log(`Новое задание: ${c.name}`);
     speak(`Назови ${c.name}`);
 }
 
@@ -413,6 +475,7 @@ function showWin() {
     document.getElementById('game-screen').style.display = 'none';
     document.getElementById('win-screen').style.display = 'flex';
     speak('Поздравляю! Ты назвала все цвета!');
+    
     const emojis = ['⭐','🎈','🎉','🍭','🌈','💖'];
     for (let i = 0; i < 30; i++) {
         setTimeout(() => {
