@@ -56,9 +56,10 @@
 
         /* --- ИГРОВОЙ ЭКРАН --- */
         #game-screen { display:none; flex-direction:column; align-items:center; width:100%; }
-        #color-name {
-            font-size: 3rem; font-weight: 800;
+        #instruction-text {
+            font-size: 2rem; font-weight: 800;
             margin-bottom: 30px; text-align: center; min-height: 60px;
+            color: #333;
         }
         #color-card {
             width: 70vw; height: 70vw; max-width: 350px; max-height: 350px;
@@ -127,7 +128,7 @@
 
 <!-- ИГРА -->
 <div id="game-screen">
-    <div id="color-name"></div>
+    <div id="instruction-text">Какой это цвет?</div>
     <div id="color-card"></div>
     <div id="mic-indicator">🎤</div>
     <div id="status-text">Ожидание...</div>
@@ -143,7 +144,7 @@
 
 <script>
 // ==========================================
-// КОНФИГУРАЦИЯ (Упрощенная)
+// КОНФИГУРАЦИЯ
 // ==========================================
 const COLORS = [
     { name:"Красный",   hex:"#E53935", hint:"как помидорка" },
@@ -177,7 +178,7 @@ function log(msg, type='info') {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ==========================================
-// АЛГОРИТМ ЛЕВЕНШТЕЙНА (Нечеткий поиск)
+// АЛГОРИТМ ЛЕВЕНШТЕЙНА
 // ==========================================
 function levenshtein(a, b) {
     const matrix = [];
@@ -190,29 +191,34 @@ function levenshtein(a, b) {
                 matrix[i][j] = matrix[i - 1][j - 1];
             } else {
                 matrix[i][j] = Math.min(
-                    matrix[i - 1][j - 1] + 1, // substitution
-                    Math.min(matrix[i][j - 1] + 1, // insertion
-                    matrix[i - 1][j] + 1)); // deletion
+                    matrix[i - 1][j - 1] + 1,
+                    Math.min(matrix[i][j - 1] + 1,
+                    matrix[i - 1][j] + 1));
             }
         }
     }
     return matrix[b.length][a.length];
 }
 
-// Находим наиболее похожий цвет
-function findBestMatch(input) {
-    let bestMatch = null;
-    let minDistance = Infinity;
+function findBestMatchInPhrase(phrase) {
+    // Разбиваем фразу на слова
+    const words = phrase.toLowerCase().split(/\s+/);
+    let bestGlobalMatch = { color: null, distance: Infinity, word: "" };
 
-    COLORS.forEach(c => {
-        const dist = levenshtein(input, c.name.toLowerCase());
-        if (dist < minDistance) {
-            minDistance = dist;
-            bestMatch = c;
-        }
+    words.forEach(word => {
+        // Очищаем слово от знаков препинания
+        const cleanWord = word.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"");
+        if (cleanWord.length < 2) return;
+
+        COLORS.forEach(c => {
+            const dist = levenshtein(cleanWord, c.name.toLowerCase());
+            if (dist < bestGlobalMatch.distance) {
+                bestGlobalMatch = { color: c, distance: dist, word: cleanWord };
+            }
+        });
     });
     
-    return { color: bestMatch, distance: minDistance };
+    return bestGlobalMatch;
 }
 
 // ==========================================
@@ -228,7 +234,6 @@ async function runDiagnostics() {
     btn.disabled = true;
     list.classList.add('active');
     hint.textContent = '';
-    log('Запуск диагностики...');
 
     let passed = 0;
     function mark(id, status, msg) {
@@ -311,7 +316,7 @@ function finishDiag(passed) {
 }
 
 // ==========================================
-// МОНИТОРИНГ И ИГРА
+// ИГРА
 // ==========================================
 function startAliveMonitor() {
     const mic = document.getElementById('mic-indicator');
@@ -398,34 +403,36 @@ function restartListening() {
     }
 }
 
-// ГЛАВНАЯ ЛОГИКА ПРОВЕРКИ ОТВЕТА
+// УЛУЧШЕННАЯ ЛОГИКА ПРОВЕРКИ (ПОИСК В ФРАЗЕ)
 function analyzeAnswer(text) {
     const targetColor = COLORS[currentIdx];
-    const match = findBestMatch(text);
+    const match = findBestMatchInPhrase(text);
     
-    log(`Лучшее совпадение: ${match.color.name} (расстояние: ${match.distance})`);
+    if (!match.color) {
+        log("Цветов в фразе не найдено");
+        speak("Попробуй назвать цвет!");
+        return;
+    }
 
-    // Порог чувствительности. 
-    // Для коротких слов (3-4 буквы) допустимо 1-2 отличия.
-    // Для длинных (8+ букв) допустимо 3-4 отличия.
-    const threshold = Math.max(1, Math.floor(targetColor.name.length / 2.5));
+    // Динамический порог для одного слова
+    const threshold = Math.max(2, Math.floor(match.color.name.length / 2));
+    
+    log(`Цель: ${targetColor.name}. Лучшее слово во фразе: "${match.word}" -> ${match.color.name} (расст: ${match.distance}, порог: ${threshold})`);
 
     if (match.distance <= threshold) {
-        // Слово похоже на какой-то цвет из списка
+        // Слово похоже на какой-то цвет
         if (match.color.name === targetColor.name) {
-            // И это ПРАВИЛЬНЫЙ цвет
             log(`Верно! (${match.distance} отличий)`, 'success');
             handleCorrect();
         } else {
             // Похоже, но на ДРУГОЙ цвет
             log(`Похоже на ${match.color.name}, но нужно ${targetColor.name}`);
-            speak(`Это ${match.color.name}, ${match.color.hint}. А нам нужен ${targetColor.name}, ${targetColor.hint}.`);
-            // Не блокируем isProcessing надолго, даем послушать еще раз
+            speak(`Это ${match.color.name}, ${match.color.hint}. А нужен ${targetColor.name}.`);
         }
     } else {
-        // Вообще не похоже ни на один цвет
-        log(`Не распознано как цвет (расстояние ${match.distance})`);
-        speak("Не расслышала. Попробуй ещё раз!");
+        // Нашли слово, но оно совсем не похоже на цвета (или похоже очень отдаленно)
+        log(`Слово "${match.word}" слишком далеко от цветов (${match.distance})`);
+        speak("Не расслышала название цвета. Попробуй ещё раз!");
     }
 }
 
@@ -435,7 +442,6 @@ function handleCorrect() {
     document.getElementById('mic-indicator').classList.remove('listening');
     document.getElementById('color-card').classList.add('correct');
     
-    // Важно: произносим правильное название цвета, чтобы ребенок запомнил
     speak(`Молодец! Это ${COLORS[currentIdx].name}!`);
     found.add(currentIdx);
 
@@ -461,13 +467,13 @@ function showNextColor() {
     currentIdx = available[Math.floor(Math.random() * available.length)];
     
     const c = COLORS[currentIdx];
-    const nameEl = document.getElementById('color-name');
-    nameEl.textContent = c.name;
-    nameEl.style.color = ['Белый','Желтый'].includes(c.name) ? '#333' : c.hex;
+    
+    // ВАЖНО: Не показываем и не произносим название цвета!
+    document.getElementById('instruction-text').textContent = "Какой это цвет?";
     document.getElementById('color-card').style.backgroundColor = c.hex;
     
-    log(`Задание: ${c.name}`);
-    speak(`Назови ${c.name}`);
+    log(`Задание: показать ${c.name}, ждать ответа.`);
+    speak("Назови цвет!");
 }
 
 function speak(text) {
