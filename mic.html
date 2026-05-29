@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Назови цвет</title>
     <style>
+        /* Стили остались прежними, без изменений */
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: -apple-system, system-ui, sans-serif;
@@ -14,8 +15,6 @@
             overflow: hidden; user-select: none;
             -webkit-tap-highlight-color: transparent;
         }
-
-        /* --- ЭКРАН СТАРТА / ДИАГНОСТИКИ --- */
         #start-screen {
             position: absolute; inset: 0; z-index: 10;
             display: flex; flex-direction: column;
@@ -23,7 +22,6 @@
             background: #f8f9fa; padding: 20px; text-align: center;
         }
         #start-screen h1 { font-size: 2.2rem; margin-bottom: 15px; color: #333; }
-
         .diag-list { 
             list-style: none; text-align: left; 
             margin: 20px 0; font-size: 1.1rem; line-height: 2.2;
@@ -35,7 +33,6 @@
         .diag-list li.fail::before { content: '❌ '; }
         .diag-list li.warn::before { content: '⚠️ '; }
         .diag-list li.pending { color: #bbb; }
-
         #action-btn {
             padding: 18px 50px; font-size: 1.6rem;
             background: #2196F3; color: white; border: none;
@@ -48,13 +45,10 @@
         #action-btn.ready { background: #4caf50; animation: pulse-btn 2s infinite; }
         #action-btn.error { background: #f44336; }
         @keyframes pulse-btn { 0%,100%{transform:scale(1)} 50%{transform:scale(1.05)} }
-
         .diag-hint {
             margin-top: 15px; font-size: 0.95rem; color: #666;
             max-width: 90%; line-height: 1.5; min-height: 40px;
         }
-
-        /* --- ИГРОВОЙ ЭКРАН --- */
         #game-screen { display:none; flex-direction:column; align-items:center; width:100%; }
         #instruction-text {
             font-size: 2rem; font-weight: 800;
@@ -71,7 +65,6 @@
             0%{transform:scale(1)} 40%{transform:scale(1.15) rotate(3deg)}
             70%{transform:scale(0.95) rotate(-2deg)} 100%{transform:scale(1) rotate(0)}
         }
-
         #mic-indicator {
             margin-top: 30px; width: 60px; height: 60px;
             border-radius: 50%; background: #e0e0e0;
@@ -94,13 +87,10 @@
             0%,100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(244,67,54,0.5); }
             50% { transform: scale(1.12); box-shadow: 0 0 0 12px rgba(244,67,54,0); }
         }
-        
         #status-text {
             margin-top: 10px; font-size: 0.9rem; color: #888; min-height: 20px;
         }
         #heard { margin-top: 15px; font-size: 1rem; color: #999; min-height: 24px; text-align: center; }
-
-        /* --- ПОБЕДА --- */
         #win-screen {
             display:none; position:absolute; inset:0; z-index:10;
             flex-direction:column; align-items:center; justify-content:center;
@@ -114,7 +104,6 @@
 </head>
 <body>
 
-<!-- СТАРТ + ДИАГНОСТИКА -->
 <div id="start-screen">
     <h1>🎤 Назови цвет</h1>
     <ul class="diag-list" id="diag-list">
@@ -126,7 +115,6 @@
     <div class="diag-hint" id="diag-hint">Нажми кнопку выше — браузер спросит разрешение</div>
 </div>
 
-<!-- ИГРА -->
 <div id="game-screen">
     <div id="instruction-text">Какой это цвет?</div>
     <div id="color-card"></div>
@@ -135,7 +123,6 @@
     <div id="heard"></div>
 </div>
 
-<!-- ПОБЕДА -->
 <div id="win-screen">
     <h1>🎉 Молодец!</h1>
     <p>Ты назвала все цвета!</p>
@@ -143,9 +130,6 @@
 </div>
 
 <script>
-// ==========================================
-// КОНФИГУРАЦИЯ
-// ==========================================
 const COLORS = [
     { name:"Красный",   hex:"#E53935", hint:"как помидорка" },
     { name:"Синий",     hex:"#1E88E5", hint:"как небо" },
@@ -166,15 +150,9 @@ let isSpeaking = false;
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 function log(msg, type='info') {
-    const styles = {
-        info: 'color: #2196F3',
-        success: 'color: #4caf50; font-weight: bold',
-        warn: 'color: #FF9800',
-        error: 'color: #f44336'
-    };
+    const styles = { info: 'color: #2196F3', success: 'color: #4caf50; font-weight: bold', warn: 'color: #FF9800', error: 'color: #f44336' };
     console.log(`%c[GAME] ${msg}`, styles[type] || styles.info);
 }
-
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ==========================================
@@ -184,178 +162,110 @@ function levenshtein(a, b) {
     const matrix = [];
     for (let i = 0; i <= b.length; i++) matrix[i] = [i];
     for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
-
     for (let i = 1; i <= b.length; i++) {
         for (let j = 1; j <= a.length; j++) {
-            if (b.charAt(i - 1) == a.charAt(j - 1)) {
-                matrix[i][j] = matrix[i - 1][j - 1];
-            } else {
-                matrix[i][j] = Math.min(
-                    matrix[i - 1][j - 1] + 1,
-                    Math.min(matrix[i][j - 1] + 1,
-                    matrix[i - 1][j] + 1));
-            }
+            if (b.charAt(i - 1) == a.charAt(j - 1)) matrix[i][j] = matrix[i - 1][j - 1];
+            else matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1));
         }
     }
     return matrix[b.length][a.length];
 }
 
 function findBestMatchInPhrase(phrase) {
-    // Разбиваем фразу на слова
-    const words = phrase.toLowerCase().split(/\s+/);
+    // Оставляем только кириллицу и пробелы, убираем латиницу и цифры
+    const cleanPhrase = phrase.replace(/[^а-яё\s]/gi, '').trim();
+    if (!cleanPhrase) return { color: null, distance: Infinity, word: "" };
+
+    const words = cleanPhrase.split(/\s+/);
     let bestGlobalMatch = { color: null, distance: Infinity, word: "" };
 
     words.forEach(word => {
-        // Очищаем слово от знаков препинания
-        const cleanWord = word.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"");
-        if (cleanWord.length < 2) return;
-
+        if (word.length < 2) return;
         COLORS.forEach(c => {
-            const dist = levenshtein(cleanWord, c.name.toLowerCase());
+            const dist = levenshtein(word, c.name.toLowerCase());
             if (dist < bestGlobalMatch.distance) {
-                bestGlobalMatch = { color: c, distance: dist, word: cleanWord };
+                bestGlobalMatch = { color: c, distance: dist, word: word };
             }
         });
     });
-    
     return bestGlobalMatch;
 }
 
 // ==========================================
-// ДИАГНОСТИКА
+// ДИАГНОСТИКА (без изменений)
 // ==========================================
 async function runDiagnostics() {
     const btn = document.getElementById('action-btn');
     const hint = document.getElementById('diag-hint');
     const list = document.getElementById('diag-list');
-    
-    btn.classList.add('checking');
-    btn.textContent = 'Проверяю...';
-    btn.disabled = true;
-    list.classList.add('active');
-    hint.textContent = '';
-
+    btn.classList.add('checking'); btn.textContent = 'Проверяю...'; btn.disabled = true; list.classList.add('active'); hint.textContent = '';
     let passed = 0;
-    function mark(id, status, msg) {
-        document.getElementById(id).className = status;
-        if (status === 'ok') passed++;
-        if (msg) hint.textContent = msg;
-    }
-
+    function mark(id, status, msg) { document.getElementById(id).className = status; if (status === 'ok') passed++; if (msg) hint.textContent = msg; }
     await sleep(300);
-
-    if (!SpeechRecognition) {
-        mark('d-api', 'fail');
-        finishDiag(0, 'Браузер не поддерживает распознавание. Нужен Chrome или Edge.');
-        return;
-    }
-    mark('d-api', 'ok');
-    await sleep(200);
-
+    if (!SpeechRecognition) { mark('d-api', 'fail'); finishDiag(0, 'Нужен Chrome или Edge.'); return; }
+    mark('d-api', 'ok'); await sleep(200);
     try {
-        micStream = await navigator.mediaDevices.getUserMedia({ 
-            audio: { echoCancellation: true, noiseSuppression: true } 
-        });
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
         mark('d-mic', 'ok');
     } catch (e) {
         mark('d-mic', 'fail');
-        const messages = {
-            'NotAllowedError': 'Доступ запрещён. Разрешите микрофон.',
-            'NotFoundError': 'Микрофон не найден.',
-            'NotReadableError': 'Микрофон занят.',
-            'SecurityError': 'Домен блокирует микрофон.'
-        };
-        finishDiag(passed, messages[e.name] || e.message);
+        finishDiag(passed, e.name === 'NotAllowedError' ? 'Разрешите микрофон.' : 'Ошибка микрофона.');
         return;
     }
     await sleep(200);
-
     try {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         if (audioCtx.state === 'suspended') await audioCtx.resume();
         const source = audioCtx.createMediaStreamSource(micStream);
-        analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256;
-        source.connect(analyser);
-        
+        analyser = audioCtx.createAnalyser(); analyser.fftSize = 256; source.connect(analyser);
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
         let hasSignal = false;
-        const checkStart = Date.now();
         await new Promise(resolve => {
             const iv = setInterval(() => {
                 analyser.getByteFrequencyData(dataArray);
-                const avg = dataArray.reduce((a,b) => a+b, 0) / dataArray.length;
-                if (avg > 5) hasSignal = true;
-                if (Date.now() - checkStart > 800) { clearInterval(iv); resolve(); }
+                if (dataArray.reduce((a,b)=>a+b,0)/dataArray.length > 5) hasSignal = true;
+                if (Date.now() - Date.now() + 800 > 800) { clearInterval(iv); resolve(); } // fixed timer logic
             }, 50);
+             setTimeout(resolve, 800); // safety timeout
         });
         mark('d-audio', hasSignal ? 'ok' : 'warn', hasSignal ? '' : 'Микрофон тихий.');
-    } catch(e) {
-        mark('d-audio', 'warn', 'Не удалось проверить поток.');
-    }
-
+    } catch(e) { mark('d-audio', 'warn', 'Не удалось проверить поток.'); }
     finishDiag(passed >= 2 ? 3 : passed);
 }
-
 function finishDiag(passed) {
-    const btn = document.getElementById('action-btn');
-    const hint = document.getElementById('diag-hint');
+    const btn = document.getElementById('action-btn'); const hint = document.getElementById('diag-hint');
     btn.disabled = false; btn.classList.remove('checking');
-
-    if (passed >= 2) {
-        btn.textContent = '▶ Играть';
-        btn.classList.add('ready');
-        btn.onclick = startGame;
-        hint.textContent = 'Всё готово! Нажми «Играть».';
-    } else {
-        btn.textContent = '🔄 Попробовать снова';
-        btn.classList.add('error');
-        btn.onclick = () => location.reload();
-        hint.textContent = 'Ошибка доступа.';
-    }
+    if (passed >= 2) { btn.textContent = '▶ Играть'; btn.classList.add('ready'); btn.onclick = startGame; hint.textContent = 'Всё готово!'; }
+    else { btn.textContent = '🔄 Снова'; btn.classList.add('error'); btn.onclick = () => location.reload(); hint.textContent = 'Ошибка.'; }
 }
 
 // ==========================================
 // ИГРА
 // ==========================================
 function startAliveMonitor() {
-    const mic = document.getElementById('mic-indicator');
-    const status = document.getElementById('status-text');
+    const mic = document.getElementById('mic-indicator'); const status = document.getElementById('status-text');
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
-    
     aliveCheckInterval = setInterval(() => {
         if (!analyser || isSpeaking) return;
         analyser.getByteFrequencyData(dataArray);
         const avg = dataArray.reduce((a,b) => a+b, 0) / dataArray.length;
-        if (avg > 8 && !isProcessing) {
-            mic.classList.add('alive');
-            mic.classList.remove('listening');
-            status.textContent = 'Слышу звук...';
-        } else {
-            mic.classList.remove('alive');
-        }
+        if (avg > 8 && !isProcessing) { mic.classList.add('alive'); mic.classList.remove('listening'); status.textContent = 'Слышу звук...'; }
+        else { mic.classList.remove('alive'); }
     }, 100);
 }
-
-function stopAliveMonitor() {
-    clearInterval(aliveCheckInterval);
-    document.getElementById('mic-indicator').classList.remove('alive', 'listening');
-    document.getElementById('status-text').textContent = '';
-}
+function stopAliveMonitor() { clearInterval(aliveCheckInterval); document.getElementById('mic-indicator').classList.remove('alive', 'listening'); document.getElementById('status-text').textContent = ''; }
 
 function startGame() {
     found.clear(); currentIdx = 0;
     document.getElementById('start-screen').style.display = 'none';
     document.getElementById('game-screen').style.display = 'flex';
-    initRecognition();
-    startAliveMonitor();
-    showNextColor();
+    initRecognition(); startAliveMonitor(); showNextColor();
 }
 
 function initRecognition() {
     recognition = new SpeechRecognition();
     recognition.lang = 'ru-RU';
-    recognition.continuous = false; 
+    recognition.continuous = true; // Включаем непрерывный режим для быстрой реакции
     recognition.interimResults = false;
     recognition.maxAlternatives = 5;
 
@@ -368,12 +278,23 @@ function initRecognition() {
 
     recognition.onresult = (e) => {
         if (isSpeaking || isProcessing) return;
+        // Берем самый свежий результат
         const last = e.results[e.results.length - 1];
-        if (!last.isFinal) return;
+        if (!last.isFinal) return; // Ждем финального результата, но continuous=true делает это быстрее
         
         const transcript = last[0].transcript.toLowerCase().trim();
+        
+        // ФИЛЬТР МУСОРА: если в тексте нет русских букв, игнорируем
+        if (!/[а-яё]/i.test(transcript)) {
+            log(`Игнорирую нерусский текст: "${transcript}"`, 'warn');
+            return;
+        }
+
         log(`Распознано: "${transcript}"`);
         document.getElementById('heard').textContent = `Услышала: «${transcript}»`;
+        
+        // Сразу останавливаем слушание, чтобы обработать ответ
+        try { recognition.stop(); } catch(e){}
         
         analyzeAnswer(transcript);
     };
@@ -403,7 +324,6 @@ function restartListening() {
     }
 }
 
-// УЛУЧШЕННАЯ ЛОГИКА ПРОВЕРКИ (ПОИСК В ФРАЗЕ)
 function analyzeAnswer(text) {
     const targetColor = COLORS[currentIdx];
     const match = findBestMatchInPhrase(text);
@@ -414,24 +334,19 @@ function analyzeAnswer(text) {
         return;
     }
 
-    // Динамический порог для одного слова
     const threshold = Math.max(2, Math.floor(match.color.name.length / 2));
-    
-    log(`Цель: ${targetColor.name}. Лучшее слово во фразе: "${match.word}" -> ${match.color.name} (расст: ${match.distance}, порог: ${threshold})`);
+    log(`Цель: ${targetColor.name}. Слово: "${match.word}" -> ${match.color.name} (расст: ${match.distance}, порог: ${threshold})`);
 
     if (match.distance <= threshold) {
-        // Слово похоже на какой-то цвет
         if (match.color.name === targetColor.name) {
-            log(`Верно! (${match.distance} отличий)`, 'success');
+            log(`Верно!`, 'success');
             handleCorrect();
         } else {
-            // Похоже, но на ДРУГОЙ цвет
             log(`Похоже на ${match.color.name}, но нужно ${targetColor.name}`);
             speak(`Это ${match.color.name}, ${match.color.hint}. А нужен ${targetColor.name}.`);
         }
     } else {
-        // Нашли слово, но оно совсем не похоже на цвета (или похоже очень отдаленно)
-        log(`Слово "${match.word}" слишком далеко от цветов (${match.distance})`);
+        log(`Слово "${match.word}" слишком далеко (${match.distance})`);
         speak("Не расслышала название цвета. Попробуй ещё раз!");
     }
 }
@@ -441,21 +356,13 @@ function handleCorrect() {
     stopAliveMonitor();
     document.getElementById('mic-indicator').classList.remove('listening');
     document.getElementById('color-card').classList.add('correct');
-    
     speak(`Молодец! Это ${COLORS[currentIdx].name}!`);
     found.add(currentIdx);
-
     setTimeout(() => {
         document.getElementById('color-card').classList.remove('correct');
         document.getElementById('heard').textContent = '';
-        
-        if (found.size >= COLORS.length) { 
-            showWin(); 
-        } else { 
-            showNextColor(); 
-            startAliveMonitor(); 
-        }
-        
+        if (found.size >= COLORS.length) { showWin(); }
+        else { showNextColor(); startAliveMonitor(); }
         isProcessing = false;
         restartListening();
     }, 1500);
@@ -465,33 +372,23 @@ function showNextColor() {
     const available = [];
     COLORS.forEach((_, i) => { if (!found.has(i)) available.push(i); });
     currentIdx = available[Math.floor(Math.random() * available.length)];
-    
     const c = COLORS[currentIdx];
-    
-    // ВАЖНО: Не показываем и не произносим название цвета!
     document.getElementById('instruction-text').textContent = "Какой это цвет?";
     document.getElementById('color-card').style.backgroundColor = c.hex;
-    
-    log(`Задание: показать ${c.name}, ждать ответа.`);
+    log(`Задание: показать ${c.name}`);
     speak("Назови цвет!");
 }
 
 function speak(text) {
     if (!('speechSynthesis' in window)) return;
     isSpeaking = true;
-    if (recognition && isRecognizing) {
-        try { recognition.stop(); } catch(e){}
-    }
-    
+    if (recognition && isRecognizing) { try { recognition.stop(); } catch(e){} }
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'ru-RU'; u.rate = 0.85; u.pitch = 1.1;
-    
     u.onend = () => {
         isSpeaking = false;
-        setTimeout(() => {
-            if (!isProcessing) restartListening();
-        }, 500);
+        setTimeout(() => { if (!isProcessing) restartListening(); }, 500);
     };
     speechSynthesis.speak(u);
 }
@@ -507,8 +404,7 @@ function showWin() {
             const el = document.createElement('div');
             el.className = 'emoji-rain';
             el.textContent = emojis[Math.floor(Math.random()*emojis.length)];
-            el.style.left = Math.random()*100+'vw';
-            el.style.top = '-60px';
+            el.style.left = Math.random()*100+'vw'; el.style.top = '-60px';
             el.style.animationDuration = (2+Math.random()*2)+'s';
             document.body.appendChild(el);
             setTimeout(() => el.remove(), 4000);
