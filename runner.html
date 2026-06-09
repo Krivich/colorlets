@@ -3,510 +3,192 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Назови цвет</title>
+    <title>HTML Runner</title>
     <style>
-        :root { --bg: #f8f9fa; --text: #333; --blue: #2196F3; --green: #4caf50; --red: #f44336; --orange: #FF9800; }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; user-select: none; -webkit-tap-highlight-color: transparent; color: var(--text); }
-        
-        .screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; transition: opacity 0.3s; }
-        .hidden { display: none !important; }
-        
-        h1 { font-size: 2rem; margin-bottom: 15px; }
-        
-        .diag-list { list-style: none; text-align: left; margin: 15px 0; font-size: 1rem; line-height: 2; width: 100%; max-width: 320px; }
-        .diag-list.active li { opacity: 1; }
-        .diag-list li { padding-left: 30px; position: relative; opacity: 0.4; transition: all 0.3s; }
-        .diag-list li::before { content: '⏳'; position: absolute; left: 0; }
-        .diag-list li.ok::before { content: '✅'; }
-        .diag-list li.fail::before { content: '❌'; }
-        .diag-list li.checking { font-weight: bold; color: var(--blue); }
-        
-        #action-btn { 
-            padding: 18px 40px; font-size: 1.4rem; background: var(--blue); color: white; 
-            border: none; border-radius: 50px; cursor: pointer; 
-            box-shadow: 0 4px 15px rgba(33,150,243,0.3); 
-            transition: all 0.2s; min-width: 260px; margin-top: 10px;
-            touch-action: manipulation;
+        :root {
+            --bg: #1e1e1e;
+            --panel: #252526;
+            --border: #3c3c3c;
+            --accent: #0e639c;
+            --accent-hover: #1177bb;
+            --text: #d4d4d4;
+            --green: #4ec9b0;
         }
-        #action-btn:active { transform: scale(0.96); }
-        #action-btn:disabled { background: #ccc; box-shadow: none; cursor: not-allowed; }
-        #action-btn.state-checking { background: var(--orange); }
-        #action-btn.state-error { background: var(--red); }
-        #action-btn.state-fallback { background: #9c27b0; }
-        
-        .hint { margin-top: 15px; font-size: 0.9rem; color: #666; min-height: 40px; max-width: 90%; line-height: 1.4; }
-
-        #color-card { 
-            width: 65vw; height: 65vw; max-width: 320px; max-height: 320px; 
-            border-radius: 25px; box-shadow: 0 8px 25px rgba(0,0,0,0.15); 
-            margin: 20px 0; transition: transform 0.3s;
-        }
-        #color-card.correct { animation: pop 0.6s ease; box-shadow: 0 0 30px rgba(76,175,80,0.6); }
-        @keyframes pop { 0%{transform:scale(1)} 50%{transform:scale(1.1) rotate(2deg)} 100%{transform:scale(1)} }
-        
-        .indicators { display: flex; gap: 15px; align-items: center; margin-top: 10px; }
-        .mic-icon { width: 50px; height: 50px; border-radius: 50%; background: #e0e0e0; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; transition: all 0.3s; }
-        .mic-icon.active { background: #ffcdd2; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(244,67,54,0.4)} 50%{box-shadow:0 0 0 10px rgba(244,67,54,0)} }
-        
-        .vol-bar { width: 8px; height: 50px; background: #ddd; border-radius: 4px; overflow: hidden; position: relative; }
-        .vol-fill { position: absolute; bottom: 0; left: 0; width: 100%; height: 0%; background: var(--green); transition: height 0.08s linear; }
-
-        /* СВОРАЧИВАЕМАЯ ПАНЕЛЬ ЛОГОВ */
-        #log-panel {
-            position: fixed; bottom: 0; left: 0; right: 0;
-            background: #1e1e1e; color: #ddd;
-            font-family: 'Courier New', monospace; font-size: 11px; line-height: 1.4;
-            z-index: 100;
-            transition: height 0.3s ease;
-            height: 32px; /* свёрнута по умолчанию */
+        * { box-sizing: border-box; margin: 0; padding: 0; outline: none; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg); color: var(--text);
+            height: 100vh; display: flex; flex-direction: column;
             overflow: hidden;
-            border-top: 2px solid #333;
         }
-        #log-panel.expanded {
-            height: 40vh;
-        }
-        
-        .log-header {
-            position: sticky; top: 0;
-            background: #2d2d2d;
-            padding: 6px 10px;
-            display: flex; justify-content: space-between; align-items: center;
-            cursor: pointer;
-            border-bottom: 1px solid #3c3c3c;
-            user-select: none;
-            -webkit-tap-highlight-color: transparent;
-        }
-        .log-header:active { background: #3a3a3a; }
-        .log-title { font-size: 11px; color: #aaa; display: flex; align-items: center; gap: 6px; }
-        .log-toggle-icon { font-size: 14px; transition: transform 0.3s; }
-        #log-panel.expanded .log-toggle-icon { transform: rotate(180deg); }
-        
-        .log-actions { display: flex; gap: 6px; }
-        .btn-log {
-            background: #0e639c; color: white; border: none;
-            padding: 3px 10px; border-radius: 3px; font-size: 10px;
-            cursor: pointer; touch-action: manipulation;
-        }
-        .btn-log:active { background: #1177bb; }
-        
-        #log-content {
-            padding: 8px 10px;
-            overflow-y: auto;
-            height: calc(100% - 32px);
-            -webkit-overflow-scrolling: touch;
-        }
-        .log-line { margin-bottom: 3px; word-break: break-word; border-bottom: 1px solid #2a2a2a; padding-bottom: 2px; }
-        .log-time { color: #666; margin-right: 6px; }
-        .log-info { color: #81d4fa; }
-        .log-ok { color: #a5d6a7; font-weight: bold; }
-        .log-warn { color: #ffe082; }
-        .log-err { color: #ef9a9a; font-weight: bold; }
-        .log-stt { color: #ce93d8; }
 
-        #win-screen h1 { font-size: 2.5rem; color: var(--green); }
-        .emoji-rain { position: fixed; font-size: 2rem; animation: fall 3s linear forwards; pointer-events: none; z-index: 50; }
-        @keyframes fall { to { top: 110vh; transform: rotate(360deg); } }
+        /* EDITOR AREA - занимает всё кроме toolbar снизу */
+        .editor-wrap {
+            flex: 1; position: relative; display: flex; flex-direction: column;
+            min-height: 0;
+        }
+        textarea {
+            flex: 1; width: 100%; resize: none; border: none;
+            background: var(--bg); color: #ce9178;
+            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+            font-size: 13px; line-height: 1.5; padding: 12px;
+            tab-size: 2; white-space: pre; overflow: auto;
+            padding-bottom: 80px; /* отступ чтобы текст не прятался за toolbar */
+        }
+        textarea::placeholder { color: #555; }
+
+        /* TOOLBAR - ВНИЗУ СЛЕВА */
+        .toolbar {
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            display: flex; gap: 8px; padding: 10px;
+            background: var(--panel); border-top: 1px solid var(--border);
+            flex-shrink: 0; align-items: center; z-index: 10;
+            flex-wrap: wrap;
+        }
+        .toolbar h1 { 
+            font-size: 12px; font-weight: 600; 
+            opacity: 0.5; margin-right: auto; 
+            order: -1; /* заголовок в самом начале */
+        }
+        
+        button {
+            padding: 10px 16px; border: none; border-radius: 6px;
+            font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: background 0.2s; touch-action: manipulation;
+        }
+        .btn-run { background: var(--green); color: #1e1e1e; flex: 1; min-width: 120px; }
+        .btn-run:active { opacity: 0.8; }
+        .btn-clear { background: var(--border); color: var(--text); }
+        .btn-copy { background: var(--accent); color: white; }
+
+        /* PREVIEW FRAME */
+        #preview-container {
+            display: none;
+            position: fixed; inset: 0; z-index: 20;
+            background: white; flex-direction: column;
+        }
+        #preview-container.active { display: flex; }
+        
+        .preview-header {
+            display: flex; align-items: center; padding: 8px 12px;
+            background: var(--panel); border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        .preview-title { font-size: 13px; margin-right: auto; color: var(--green); }
+        .btn-close { background: #f44336; color: white; padding: 6px 14px; }
+
+        iframe {
+            flex: 1; width: 100%; border: none; background: white;
+        }
+
+        /* STATUS TOAST */
+        #toast {
+            position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.85); color: white; padding: 10px 18px;
+            border-radius: 20px; font-size: 13px; pointer-events: none;
+            opacity: 0; transition: opacity 0.3s; z-index: 100;
+        }
+        #toast.show { opacity: 1; }
     </style>
 </head>
 <body>
 
-<div id="start-screen" class="screen">
-    <h1>🎨 Назови цвет</h1>
-    <ul class="diag-list" id="diag-list">
-        <li id="d-api">Браузер поддерживает API</li>
-        <li id="d-secure">Безопасное соединение (HTTPS)</li>
-        <li id="d-url">Правильный URL (github.io)</li>
-        <li id="d-mic">Доступ к микрофону</li>
-        <li id="d-stt">Распознавание речи (Google)</li>
-    </ul>
-    <button id="action-btn" onclick="runDiagnostics()">▶ Запустить проверку</button>
-    <div class="hint" id="diag-hint">Нажмите кнопку и разрешите доступ к микрофону.</div>
+<div class="editor-wrap">
+    <textarea id="code-editor" placeholder="Вставьте HTML-код сюда..." spellcheck="false"></textarea>
 </div>
 
-<div id="game-screen" class="screen hidden">
-    <div style="font-size:1.8rem; font-weight:800; min-height:50px;" id="instruction">Какой это цвет?</div>
-    <div id="color-card"></div>
-    <div class="indicators">
-        <div class="vol-bar"><div class="vol-fill" id="vol-fill"></div></div>
-        <div class="mic-icon" id="mic-icon">🎤</div>
+<!-- TOOLBAR ВНИЗУ -->
+<div class="toolbar">
+    <h1>🚀 Runner</h1>
+    <button class="btn-copy" onclick="copyCode()">📋 Копировать</button>
+    <button class="btn-clear" onclick="clearEditor()">🗑 Очистить</button>
+    <button class="btn-run" onclick="runCode()">▶ ЗАПУСТИТЬ</button>
+</div>
+
+<!-- PREVIEW OVERLAY -->
+<div id="preview-container">
+    <div class="preview-header">
+        <span class="preview-title">● Live Preview</span>
+        <button class="btn-close" onclick="stopPreview()">✕ Закрыть</button>
     </div>
+    <iframe id="preview-frame" sandbox="allow-scripts allow-same-origin allow-modals allow-forms" allow="microphone; camera"></iframe>
 </div>
 
-<div id="win-screen" class="screen hidden">
-    <h1>🎉 Молодец!</h1>
-    <p style="margin:10px 0 25px; font-size:1.2rem;">Все цвета названы верно!</p>
-    <button onclick="location.reload()" style="padding:16px 40px;font-size:1.3rem;background:var(--green);color:white;border:none;border-radius:50px;cursor:pointer;">Играть ещё раз</button>
-</div>
-
-<!-- СВОРАЧИВАЕМАЯ ПАНЕЛЬ ЛОГОВ -->
-<div id="log-panel">
-    <div class="log-header" onclick="toggleLogs()">
-        <span class="log-title">
-            <span class="log-toggle-icon">▲</span>
-            <span>Логи</span>
-            <span id="log-count" style="color:#666;">(0)</span>
-        </span>
-        <div class="log-actions">
-            <button class="btn-log" onclick="event.stopPropagation(); copyLogs()"> Копировать</button>
-        </div>
-    </div>
-    <div id="log-content"></div>
-</div>
+<div id="toast"></div>
 
 <script>
-const COLORS = [
-    { name:"красный", hex:"#E53935" }, { name:"синий", hex:"#1E88E5" },
-    { name:"зеленый", hex:"#43A047" }, { name:"желтый", hex:"#FFD600" },
-    { name:"оранжевый", hex:"#FB8C00" }, { name:"фиолетовый", hex:"#8E24AA" },
-    { name:"черный", hex:"#263238" }, { name:"белый", hex:"#F5F5F5" },
-    { name:"розовый", hex:"#EC407A" }
-];
+    const STORAGE_KEY = 'html_runner_code_v1';
+    const editor = document.getElementById('code-editor');
+    const previewContainer = document.getElementById('preview-container');
+    const previewFrame = document.getElementById('preview-frame');
+    const toast = document.getElementById('toast');
 
-let state = {
-    idx: 0, found: new Set(), processing: false,
-    audioCtx: null, micStream: null, analyser: null,
-    recognition: null, volInterval: null,
-    lastSTTError: null
-};
+    window.addEventListener('DOMContentLoaded', () => {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) editor.value = saved;
+    });
 
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-const logs = [];
+    let saveTimeout;
+    editor.addEventListener('input', () => {
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(() => {
+            localStorage.setItem(STORAGE_KEY, editor.value);
+        }, 500);
+    });
 
-// Сворачивание/разворачивание логов
-function toggleLogs() {
-    document.getElementById('log-panel').classList.toggle('expanded');
-}
-
-function log(msg, type = 'info') {
-    const panel = document.getElementById('log-content');
-    const line = document.createElement('div');
-    line.className = 'log-line';
-    
-    const time = new Date().toLocaleTimeString('ru-RU', {hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
-    const ms = String(new Date().getMilliseconds()).padStart(3,'0');
-    
-    let prefix = '';
-    switch(type) {
-        case 'ok': prefix = '✅'; break;
-        case 'err': prefix = '❌'; break;
-        case 'warn': prefix = '⚠️'; break;
-        case 'stt': prefix = ''; break;
-        default: prefix = '️';
-    }
-    
-    logs.push(`[${time}.${ms}] ${prefix} ${msg}`);
-    line.innerHTML = `<span class="log-time">[${time}.${ms}]</span><span class="log-${type}">${prefix} ${msg}</span>`;
-    panel.appendChild(line);
-    panel.scrollTop = panel.scrollHeight;
-    
-    // Обновляем счётчик
-    document.getElementById('log-count').textContent = `(${logs.length})`;
-}
-
-function copyLogs() {
-    if (logs.length === 0) { showToast(' Логи пустые'); return; }
-    const extra = `\n=== СИСТЕМА ===\nURL: ${location.href}\nProtocol: ${location.protocol}\nHost: ${location.hostname}\nUser Agent: ${navigator.userAgent}\nOnline: ${navigator.onLine}\n=== КОНЕЦ ===`;
-    navigator.clipboard.writeText(logs.join('\n') + extra).then(() => {
-        showToast('📋 Скопировано');
-    }).catch(() => showToast(' Ошибка копирования'));
-}
-
-function showToast(msg) {
-    const toast = document.createElement('div');
-    toast.style.cssText = `position:fixed;bottom:50px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:white;padding:10px 20px;border-radius:20px;font-size:13px;z-index:200;`;
-    toast.textContent = msg;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 2000);
-}
-
-async function runDiagnostics() {
-    logs.length = 0;
-    document.getElementById('log-content').innerHTML = '';
-    document.getElementById('log-count').textContent = '(0)';
-    
-    const btn = document.getElementById('action-btn');
-    const hint = document.getElementById('diag-hint');
-    
-    document.getElementById('diag-list').classList.add('active');
-    btn.className = 'state-checking';
-    btn.textContent = 'Проверка...';
-    btn.disabled = true;
-    
-    // Автоматически разворачиваем логи при диагностике
-    document.getElementById('log-panel').classList.add('expanded');
-    
-    log('=== НАЧАЛО ДИАГНОСТИКИ ===', 'info');
-    log(`URL: ${location.href}`, 'info');
-    log(`Protocol: ${location.protocol}, Host: ${location.hostname}`, 'info');
-
-    // 1. API
-    if (!SR) {
-        setDiag('d-api', false);
-        showFail(btn, hint, 'Браузер не поддерживает распознавание речи.');
-        return;
-    }
-    setDiag('d-api', true);
-
-    // 2. HTTPS
-    const isSecure = window.isSecureContext || location.protocol === 'https:';
-    if (!isSecure) {
-        setDiag('d-secure', false);
-        showFail(btn, hint, 'Нужен HTTPS!');
-        return;
-    }
-    setDiag('d-secure', true);
-
-    // 3. URL проверка
-    const isGitHubPages = location.hostname.includes('github.io') || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-    if (!isGitHubPages) {
-        setDiag('d-url', false);
-        log(`⚠️ НЕ github.io! Host: ${location.hostname}`, 'warn');
-        hint.textContent = '⚠️ Откройте через https://krivich.github.io/...';
-    } else {
-        setDiag('d-url', true);
-        log('✅ GitHub Pages URL', 'ok');
-    }
-
-    // 4. Микрофон
-    setChecking('d-mic');
-    hint.textContent = 'Разрешите доступ к микрофону...';
-    
-    try {
-        state.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        if (state.audioCtx.state === 'suspended') await state.audioCtx.resume();
-        setDiag('d-mic', true);
-        log(`Микрофон OK`, 'ok');
-    } catch (e) {
-        setDiag('d-mic', false);
-        showFail(btn, hint, `Микрофон: ${e.name}`);
-        return;
-    }
-
-    // 5. STT Тест
-    setChecking('d-stt');
-    hint.textContent = '🗣 Скажите "КРАСНЫЙ"...';
-    log('=== ТЕСТ STT ===', 'info');
-    
-    const testRec = new SR();
-    testRec.lang = 'ru-RU';
-    testRec.interimResults = false;
-    testRec.maxAlternatives = 3;
-    
-    let sttOk = false;
-    let testTimer = null;
-    
-    testRec.onstart = () => log('STT onstart', 'stt');
-    testRec.onaudiostart = () => {
-        log('STT onaudiostart', 'stt');
-        testTimer = setTimeout(() => {
-            if (!sttOk) {
-                log('STT TIMEOUT 6s', 'warn');
-                testRec.stop();
-            }
-        }, 6000);
-    };
-    testRec.onspeechstart = () => log('STT onspeechstart - речь!', 'stt');
-    
-    testRec.onresult = (e) => {
-        sttOk = true;
-        clearTimeout(testTimer);
-        const text = e.results[0][0].transcript;
-        log(`STT результат: "${text}"`, 'ok');
-        testRec.stop();
-    };
-    
-    testRec.onerror = (e) => {
-        state.lastSTTError = e.error;
-        log(`STT error: ${e.error}`, 'err');
-    };
-    
-    testRec.onend = () => {
-        log(`STT onend (ok=${sttOk})`, sttOk ? 'ok' : 'warn');
-        clearTimeout(testTimer);
-        
-        if (sttOk) {
-            setDiag('d-stt', true);
-            hint.textContent = '✅ Запуск игры...';
-            setTimeout(() => startGame(), 800);
-        } else {
-            setDiag('d-stt', false);
-            let msg = 'STT не сработал.';
-            if (state.lastSTTError === 'service-not-allowed') {
-                msg += ' Opera блокирует Google STT. Нужен VPN или Chrome.';
-            } else if (state.lastSTTError === 'network') {
-                msg += ' Проблема с сетью.';
-            } else if (!isGitHubPages) {
-                msg += ' Проблема с URL.';
-            } else {
-                msg += ' Попробуйте громче.';
-            }
-            showFail(btn, hint, msg);
+    editor.addEventListener('keydown', (e) => {
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            const start = editor.selectionStart;
+            const end = editor.selectionEnd;
+            editor.value = editor.value.substring(0, start) + '  ' + editor.value.substring(end);
+            editor.selectionStart = editor.selectionEnd = start + 2;
         }
-    };
-    
-    try {
-        testRec.start();
-        log('testRec.start() OK', 'ok');
-    } catch(e) {
-        log(`start() error: ${e.message}`, 'err');
-        setDiag('d-stt', false);
-        showFail(btn, hint, `STT start: ${e.message}`);
-    }
-}
+    });
 
-function setDiag(id, ok) {
-    const el = document.getElementById(id);
-    el.classList.remove('checking');
-    el.classList.add(ok ? 'ok' : 'fail');
-}
-
-function setChecking(id) {
-    document.getElementById(id).classList.add('checking');
-}
-
-function showFail(btn, hint, msg) {
-    btn.className = 'state-error';
-    btn.textContent = '🔄 Попробовать снова';
-    btn.disabled = false;
-    hint.textContent = msg;
-}
-
-function startGame() {
-    state.found.clear();
-    state.idx = 0;
-    
-    document.getElementById('start-screen').classList.add('hidden');
-    document.getElementById('game-screen').classList.remove('hidden');
-    
-    // Сворачиваем логи в игре, чтобы не мешали
-    document.getElementById('log-panel').classList.remove('expanded');
-    
-    if (state.audioCtx && state.micStream) {
-        const source = state.audioCtx.createMediaStreamSource(state.micStream);
-        state.analyser = state.audioCtx.createAnalyser();
-        state.analyser.fftSize = 256;
-        source.connect(state.analyser);
-        startVolumeMonitor();
-    }
-    
-    initRecognition();
-    showNextColor();
-    log('=== ИГРА ===', 'ok');
-}
-
-function startVolumeMonitor() {
-    const fill = document.getElementById('vol-fill');
-    const data = new Uint8Array(state.analyser.frequencyBinCount);
-    state.volInterval = setInterval(() => {
-        state.analyser.getByteFrequencyData(data);
-        const avg = data.reduce((a,b)=>a+b,0)/data.length;
-        fill.style.height = Math.min(100, avg * 2) + '%';
-    }, 50);
-}
-
-function initRecognition() {
-    state.recognition = new SR();
-    state.recognition.lang = 'ru-RU';
-    state.recognition.continuous = true;
-    state.recognition.interimResults = true;
-
-    state.recognition.onstart = () => {
-        document.getElementById('mic-icon').classList.add('active');
-    };
-
-    state.recognition.onresult = (e) => {
-        if (state.processing) return;
-        const last = e.results[e.results.length - 1];
-        const text = last[0].transcript.toLowerCase().trim();
-        
-        if (last.isFinal || text.length > 2) {
-            log(`"${text}"`, 'stt');
-            checkAnswer(text);
+    function runCode() {
+        const code = editor.value.trim();
+        if (!code) {
+            showToast('⚠️ Редактор пуст');
+            return;
         }
-    };
-
-    state.recognition.onerror = (e) => {
-        log(`Ошибка: ${e.error}`, 'err');
-        if (e.error === 'no-speech') setTimeout(() => state.recognition.start(), 500);
-    };
-    
-    state.recognition.onend = () => {
-        document.getElementById('mic-icon').classList.remove('active');
-        if (!state.processing) setTimeout(() => state.recognition.start(), 500);
-    };
-    
-    try { state.recognition.start(); } catch(e) {}
-}
-
-function checkAnswer(text) {
-    const target = COLORS[state.idx];
-    if (text.includes(target.name) || levenshtein(text, target.name) <= 2) {
-        handleCorrect();
+        localStorage.setItem(STORAGE_KEY, editor.value);
+        previewFrame.srcdoc = code;
+        previewContainer.classList.add('active');
+        showToast('✅ Запущено');
     }
-}
 
-function levenshtein(a, b) {
-    const m = [], n = a.length, o = b.length;
-    for (let i = 0; i <= n; i++) m[i] = [i];
-    for (let j = 0; j <= o; j++) m[0][j] = j;
-    for (let i = 1; i <= n; i++)
-        for (let j = 1; j <= o; j++)
-            m[i][j] = a[i-1] === b[j-1] ? m[i-1][j-1] : 1 + Math.min(m[i-1][j-1], m[i][j-1], m[i-1][j]);
-    return m[n][o];
-}
-
-function handleCorrect() {
-    state.processing = true;
-    document.getElementById('color-card').classList.add('correct');
-    speak(`Молодец! Это ${COLORS[state.idx].name}!`);
-    state.found.add(state.idx);
-    
-    setTimeout(() => {
-        document.getElementById('color-card').classList.remove('correct');
-        state.processing = false;
-        if (state.found.size >= COLORS.length) showWin();
-        else showNextColor();
-    }, 1500);
-}
-
-function showNextColor() {
-    const available = COLORS.filter((_, i) => !state.found.has(i));
-    const c = available[Math.floor(Math.random() * available.length)];
-    state.idx = COLORS.indexOf(c);
-    
-    document.getElementById('instruction').textContent = 'Какой это цвет?';
-    document.getElementById('color-card').style.backgroundColor = c.hex;
-    speak('Назови цвет!');
-}
-
-function speak(text) {
-    if ('speechSynthesis' in window) {
-        speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(text);
-        u.lang = 'ru-RU'; u.rate = 0.9;
-        speechSynthesis.speak(u);
+    function stopPreview() {
+        previewContainer.classList.remove('active');
+        previewFrame.srcdoc = '';
     }
-}
 
-function showWin() {
-    document.getElementById('game-screen').classList.add('hidden');
-    document.getElementById('win-screen').classList.remove('hidden');
-    speak('Поздравляю!');
-    for(let i=0; i<20; i++) {
-        const el = document.createElement('div');
-        el.className = 'emoji-rain';
-        el.textContent = ['⭐','🎈',''][Math.floor(Math.random()*3)];
-        el.style.left = Math.random()*100+'vw';
-        el.style.top = '-50px';
-        el.style.animationDuration = (2+Math.random()*2)+'s';
-        document.body.appendChild(el);
+    function clearEditor() {
+        if (confirm('Очистить редактор?')) {
+            editor.value = '';
+            localStorage.removeItem(STORAGE_KEY);
+            showToast('🗑 Очищено');
+        }
     }
-}
 
-log('Готово. Нажмите "Запустить проверку".', 'info');
+    function copyCode() {
+        const code = editor.value;
+        if (!code) return;
+        navigator.clipboard.writeText(code).then(() => {
+            showToast('📋 Скопировано');
+        }).catch(() => {
+            editor.select();
+            document.execCommand('copy');
+            showToast('📋 Скопировано');
+        });
+    }
+
+    function showToast(msg) {
+        toast.textContent = msg;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2000);
+    }
 </script>
 </body>
 </html>
