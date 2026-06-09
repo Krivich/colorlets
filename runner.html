@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>HTML Runner</title>
+    <style>
+        :root {
+            --bg: #1e1e1e;
+            --panel: #252526;
+            --border: #3c3c3c;
+            --accent: #0e639c;
+            --accent-hover: #1177bb;
+            --text: #d4d4d4;
+            --green: #4ec9b0;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; outline: none; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg); color: var(--text);
+            height: 100vh; display: flex; flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* TOOLBAR */
+        .toolbar {
+            display: flex; gap: 8px; padding: 8px;
+            background: var(--panel); border-bottom: 1px solid var(--border);
+            flex-shrink: 0; align-items: center; z-index: 10;
+        }
+        .toolbar h1 { font-size: 14px; font-weight: 600; margin-right: auto; opacity: 0.7; }
+        
+        button {
+            padding: 8px 16px; border: none; border-radius: 4px;
+            font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: background 0.2s; touch-action: manipulation;
+        }
+        .btn-run { background: var(--green); color: #1e1e1e; }
+        .btn-run:active { opacity: 0.8; }
+        .btn-clear { background: var(--border); color: var(--text); }
+        .btn-copy { background: var(--accent); color: white; }
+
+        /* EDITOR AREA */
+        .editor-wrap {
+            flex: 1; position: relative; display: flex; flex-direction: column;
+            min-height: 0; /* Fix for flex overflow */
+        }
+        textarea {
+            flex: 1; width: 100%; resize: none; border: none;
+            background: var(--bg); color: #ce9178; /* HTML color */
+            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+            font-size: 13px; line-height: 1.5; padding: 12px;
+            tab-size: 2; white-space: pre; overflow: auto;
+        }
+        textarea::placeholder { color: #555; }
+
+        /* PREVIEW FRAME */
+        #preview-container {
+            display: none; /* Hidden by default, shown on run */
+            position: fixed; inset: 0; z-index: 20;
+            background: white; flex-direction: column;
+        }
+        #preview-container.active { display: flex; }
+        
+        .preview-header {
+            display: flex; align-items: center; padding: 8px 12px;
+            background: var(--panel); border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        .preview-title { font-size: 13px; margin-right: auto; color: var(--green); }
+        .btn-close { background: #f44336; color: white; padding: 6px 14px; }
+
+        iframe {
+            flex: 1; width: 100%; border: none; background: white;
+        }
+
+        /* STATUS TOAST */
+        #toast {
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.8); color: white; padding: 8px 16px;
+            border-radius: 20px; font-size: 12px; pointer-events: none;
+            opacity: 0; transition: opacity 0.3s; z-index: 100;
+        }
+        #toast.show { opacity: 1; }
+    </style>
+</head>
+<body>
+
+<div class="toolbar">
+    <h1>🚀 Runner</h1>
+    <button class="btn-copy" onclick="copyCode()">Копировать</button>
+    <button class="btn-clear" onclick="clearEditor()">Очистить</button>
+    <button class="btn-run" onclick="runCode()">▶ ЗАПУСТИТЬ</button>
+</div>
+
+<div class="editor-wrap">
+    <textarea id="code-editor" placeholder="Вставьте HTML-код сюда..." spellcheck="false"></textarea>
+</div>
+
+<!-- PREVIEW OVERLAY -->
+<div id="preview-container">
+    <div class="preview-header">
+        <span class="preview-title">● Live Preview</span>
+        <button class="btn-close" onclick="stopPreview()">✕ Закрыть</button>
+    </div>
+    <!-- sandbox allows scripts, same-origin (for storage), and modals/alerts -->
+    <!-- allow="microphone; camera" is CRITICAL for Web Speech API -->
+    <iframe id="preview-frame" sandbox="allow-scripts allow-same-origin allow-modals allow-forms" allow="microphone; camera"></iframe>
+</div>
+
+<div id="toast"></div>
+
+<script>
+    const STORAGE_KEY = 'html_runner_code_v1';
+    const editor = document.getElementById('code-editor');
+    const previewContainer = document.getElementById('preview-container');
+    const previewFrame = document.getElementById('preview-frame');
+    const toast = document.getElementById('toast');
+
+    // Load saved code on start
+    window.addEventListener('DOMContentLoaded', () => {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) editor.value = saved;
+    });
+
+    // Auto-save on input (debounced)
+    let saveTimeout;
+    editor.addEventListener('input', () => {
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(() => {
+            localStorage.setItem(STORAGE_KEY, editor.value);
+        }, 500);
+    });
+
+    // Tab support in textarea
+    editor.addEventListener('keydown', (e) => {
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            const start = editor.selectionStart;
+            const end = editor.selectionEnd;
+            editor.value = editor.value.substring(0, start) + '  ' + editor.value.substring(end);
+            editor.selectionStart = editor.selectionEnd = start + 2;
+        }
+    });
+
+    function runCode() {
+        const code = editor.value.trim();
+        if (!code) {
+            showToast('⚠️ Редактор пуст');
+            return;
+        }
+
+        // Save before running
+        localStorage.setItem(STORAGE_KEY, editor.value);
+
+        // Write to iframe using srcdoc (safer than document.write for sandboxed frames)
+        // Note: srcdoc works well with sandbox allow-same-origin
+        previewFrame.srcdoc = code;
+        
+        previewContainer.classList.add('active');
+        showToast('✅ Приложение запущено');
+    }
+
+    function stopPreview() {
+        previewContainer.classList.remove('active');
+        // Clear srcdoc to stop audio/mic usage immediately
+        previewFrame.srcdoc = '';
+    }
+
+    function clearEditor() {
+        if (confirm('Очистить редактор?')) {
+            editor.value = '';
+            localStorage.removeItem(STORAGE_KEY);
+            showToast('🗑 Очищено');
+        }
+    }
+
+    function copyCode() {
+        const code = editor.value;
+        if (!code) return;
+        
+        navigator.clipboard.writeText(code).then(() => {
+            showToast('📋 Скопировано в буфер');
+        }).catch(() => {
+            // Fallback
+            editor.select();
+            document.execCommand('copy');
+            showToast('📋 Скопировано (fallback)');
+        });
+    }
+
+    function showToast(msg) {
+        toast.textContent = msg;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2000);
+    }
+</script>
+</body>
+</html>
