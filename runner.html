@@ -22,41 +22,49 @@
             overflow: hidden;
         }
 
-        /* TOOLBAR */
-        .toolbar {
-            display: flex; gap: 8px; padding: 8px;
-            background: var(--panel); border-bottom: 1px solid var(--border);
-            flex-shrink: 0; align-items: center; z-index: 10;
+        /* EDITOR AREA - занимает всё кроме toolbar снизу */
+        .editor-wrap {
+            flex: 1; position: relative; display: flex; flex-direction: column;
+            min-height: 0;
         }
-        .toolbar h1 { font-size: 14px; font-weight: 600; margin-right: auto; opacity: 0.7; }
+        textarea {
+            flex: 1; width: 100%; resize: none; border: none;
+            background: var(--bg); color: #ce9178;
+            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+            font-size: 13px; line-height: 1.5; padding: 12px;
+            tab-size: 2; white-space: pre; overflow: auto;
+            padding-bottom: 80px; /* отступ чтобы текст не прятался за toolbar */
+        }
+        textarea::placeholder { color: #555; }
+
+        /* TOOLBAR - ВНИЗУ СЛЕВА */
+        .toolbar {
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            display: flex; gap: 8px; padding: 10px;
+            background: var(--panel); border-top: 1px solid var(--border);
+            flex-shrink: 0; align-items: center; z-index: 10;
+            flex-wrap: wrap;
+        }
+        .toolbar h1 { 
+            font-size: 12px; font-weight: 600; 
+            opacity: 0.5; margin-right: auto; 
+            order: -1; /* заголовок в самом начале */
+        }
         
         button {
-            padding: 8px 16px; border: none; border-radius: 4px;
+            padding: 10px 16px; border: none; border-radius: 6px;
             font-size: 13px; font-weight: 600; cursor: pointer;
             transition: background 0.2s; touch-action: manipulation;
         }
-        .btn-run { background: var(--green); color: #1e1e1e; }
+        .btn-run { background: var(--green); color: #1e1e1e; flex: 1; min-width: 120px; }
         .btn-run:active { opacity: 0.8; }
         .btn-clear { background: var(--border); color: var(--text); }
         .btn-copy { background: var(--accent); color: white; }
 
-        /* EDITOR AREA */
-        .editor-wrap {
-            flex: 1; position: relative; display: flex; flex-direction: column;
-            min-height: 0; /* Fix for flex overflow */
-        }
-        textarea {
-            flex: 1; width: 100%; resize: none; border: none;
-            background: var(--bg); color: #ce9178; /* HTML color */
-            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-            font-size: 13px; line-height: 1.5; padding: 12px;
-            tab-size: 2; white-space: pre; overflow: auto;
-        }
-        textarea::placeholder { color: #555; }
-
         /* PREVIEW FRAME */
         #preview-container {
-            display: none; /* Hidden by default, shown on run */
+            display: none;
             position: fixed; inset: 0; z-index: 20;
             background: white; flex-direction: column;
         }
@@ -76,9 +84,9 @@
 
         /* STATUS TOAST */
         #toast {
-            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.8); color: white; padding: 8px 16px;
-            border-radius: 20px; font-size: 12px; pointer-events: none;
+            position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.85); color: white; padding: 10px 18px;
+            border-radius: 20px; font-size: 13px; pointer-events: none;
             opacity: 0; transition: opacity 0.3s; z-index: 100;
         }
         #toast.show { opacity: 1; }
@@ -86,15 +94,16 @@
 </head>
 <body>
 
-<div class="toolbar">
-    <h1>🚀 Runner</h1>
-    <button class="btn-copy" onclick="copyCode()">Копировать</button>
-    <button class="btn-clear" onclick="clearEditor()">Очистить</button>
-    <button class="btn-run" onclick="runCode()">▶ ЗАПУСТИТЬ</button>
-</div>
-
 <div class="editor-wrap">
     <textarea id="code-editor" placeholder="Вставьте HTML-код сюда..." spellcheck="false"></textarea>
+</div>
+
+<!-- TOOLBAR ВНИЗУ -->
+<div class="toolbar">
+    <h1>🚀 Runner</h1>
+    <button class="btn-copy" onclick="copyCode()">📋 Копировать</button>
+    <button class="btn-clear" onclick="clearEditor()">🗑 Очистить</button>
+    <button class="btn-run" onclick="runCode()">▶ ЗАПУСТИТЬ</button>
 </div>
 
 <!-- PREVIEW OVERLAY -->
@@ -103,8 +112,6 @@
         <span class="preview-title">● Live Preview</span>
         <button class="btn-close" onclick="stopPreview()">✕ Закрыть</button>
     </div>
-    <!-- sandbox allows scripts, same-origin (for storage), and modals/alerts -->
-    <!-- allow="microphone; camera" is CRITICAL for Web Speech API -->
     <iframe id="preview-frame" sandbox="allow-scripts allow-same-origin allow-modals allow-forms" allow="microphone; camera"></iframe>
 </div>
 
@@ -117,13 +124,11 @@
     const previewFrame = document.getElementById('preview-frame');
     const toast = document.getElementById('toast');
 
-    // Load saved code on start
     window.addEventListener('DOMContentLoaded', () => {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) editor.value = saved;
     });
 
-    // Auto-save on input (debounced)
     let saveTimeout;
     editor.addEventListener('input', () => {
         clearTimeout(saveTimeout);
@@ -132,7 +137,6 @@
         }, 500);
     });
 
-    // Tab support in textarea
     editor.addEventListener('keydown', (e) => {
         if (e.key === 'Tab') {
             e.preventDefault();
@@ -149,21 +153,14 @@
             showToast('⚠️ Редактор пуст');
             return;
         }
-
-        // Save before running
         localStorage.setItem(STORAGE_KEY, editor.value);
-
-        // Write to iframe using srcdoc (safer than document.write for sandboxed frames)
-        // Note: srcdoc works well with sandbox allow-same-origin
         previewFrame.srcdoc = code;
-        
         previewContainer.classList.add('active');
-        showToast('✅ Приложение запущено');
+        showToast('✅ Запущено');
     }
 
     function stopPreview() {
         previewContainer.classList.remove('active');
-        // Clear srcdoc to stop audio/mic usage immediately
         previewFrame.srcdoc = '';
     }
 
@@ -178,14 +175,12 @@
     function copyCode() {
         const code = editor.value;
         if (!code) return;
-        
         navigator.clipboard.writeText(code).then(() => {
-            showToast('📋 Скопировано в буфер');
+            showToast('📋 Скопировано');
         }).catch(() => {
-            // Fallback
             editor.select();
             document.execCommand('copy');
-            showToast('📋 Скопировано (fallback)');
+            showToast('📋 Скопировано');
         });
     }
 
