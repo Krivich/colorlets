@@ -32,6 +32,7 @@
         #color-card.correct { animation: success-pop 0.7s ease; box-shadow: 0 0 40px rgba(76,175,80,0.7); }
         @keyframes success-pop { 0%{transform:scale(1)} 40%{transform:scale(1.15) rotate(3deg)} 70%{transform:scale(0.95) rotate(-2deg)} 100%{transform:scale(1) rotate(0)} }
         
+        /* Два индикатора */
         .indicators-row { display: flex; gap: 20px; margin-top: 20px; align-items: center; }
         .mic-circle { width: 60px; height: 60px; border-radius: 50%; background: #e0e0e0; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; transition: all 0.3s; }
         .mic-circle.listening { background: #ffcdd2; animation: mic-pulse 1.5s infinite; }
@@ -56,13 +57,13 @@
 <body>
 
 <div id="start-screen">
-    <h1>🎨 Назови цвет</h1>
+    <h1> Назови цвет</h1>
     <ul class="diag-list" id="diag-list">
         <li id="d-api" class="pending">API распознавания</li>
         <li id="d-mic" class="pending">Микрофон</li>
         <li id="d-net" class="pending">Связь с Google (STT)</li>
     </ul>
-    <button id="action-btn" onclick="runDiagnostics()">Запустить проверку</button>
+    <button id="action-btn" onclick="runDiagnostics()"> Запустить проверку</button>
     <div class="diag-hint" id="diag-hint">Проверим всё перед игрой.</div>
 </div>
 
@@ -129,16 +130,14 @@ async function runDiagnostics() {
     if (!SpeechRecognition) { 
         document.getElementById('d-api').className = 'fail'; 
         hint.textContent = 'Нужен Chrome или Edge.'; 
-        btn.disabled = false;
-        btn.textContent = 'Ошибка';
         return; 
     }
     document.getElementById('d-api').className = 'ok';
     
-    // 2. Микрофон + AudioContext (ВАЖНО: делаем это синхронно по клику)
+    // 2. Микрофон + AudioContext
     try {
         micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        // Сразу создаем и возобновляем контекст, чтобы избежать suspended state
+        // Создаем контекст сразу, чтобы разблокировать аудио по клику
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         if (audioCtx.state === 'suspended') await audioCtx.resume();
         
@@ -149,7 +148,6 @@ async function runDiagnostics() {
         hint.textContent = 'Нет доступа к микрофону. Проверьте настройки сайта.'; 
         btn.disabled = false; 
         btn.textContent = 'Попробовать снова';
-        btn.classList.remove('checking');
         return;
     }
 
@@ -170,11 +168,12 @@ async function runDiagnostics() {
         clearTimeout(testTimeout);
         const text = event.results[0][0].transcript;
         logDebug(`Тест прошел: "${text}"`, "success");
-        testRec.stop(); 
+        testRec.stop(); // Останавливаем явно
     };
     
     testRec.onerror = (e) => { 
         logDebug(`Ошибка теста STT: ${e.error}`, "error"); 
+        // no-speech и aborted - не всегда фатальны, ждем таймаут
     };
     
     testRec.onend = () => {
@@ -182,6 +181,7 @@ async function runDiagnostics() {
             document.getElementById('d-net').className = 'ok';
             startGame();
         } else {
+            // Если onend сработал без результата
             document.getElementById('d-net').className = 'fail';
             hint.textContent = "Не удалось распознать речь. Говорите громче.";
             btn.style.display = 'block'; 
@@ -193,7 +193,7 @@ async function runDiagnostics() {
     
     try { 
         testRec.start(); 
-        // Увеличили таймаут до 5 секунд для handshake и произнесения слова
+        // Увеличили таймаут до 5 секунд
         testTimeout = setTimeout(() => { 
             if(!sttWorked) {
                 logDebug("Таймаут ожидания речи", "error");
@@ -204,7 +204,6 @@ async function runDiagnostics() {
         document.getElementById('d-net').className = 'fail'; 
         hint.textContent = "Не удалось запустить STT."; 
         btn.disabled = false;
-        btn.classList.remove('checking');
     }
 }
 
@@ -216,7 +215,7 @@ function startGame() {
     document.getElementById('start-screen').style.display = 'none';
     document.getElementById('game-screen').style.display = 'flex';
     
-    // Используем существующий audioCtx и micStream из диагностики
+    // Используем уже созданный audioCtx и micStream из диагностики
     if (!analyser && audioCtx && micStream) {
         const source = audioCtx.createMediaStreamSource(micStream);
         analyser = audioCtx.createAnalyser();
