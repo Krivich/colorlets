@@ -9,7 +9,7 @@
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; user-select: none; -webkit-tap-highlight-color: transparent; color: var(--text); }
         
-        .screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; transition: opacity 0.3s; }
+        .screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; }
         .hidden { display: none !important; }
         
         h1 { font-size: 2rem; margin-bottom: 15px; }
@@ -17,9 +17,9 @@
         .diag-list { list-style: none; text-align: left; margin: 15px 0; font-size: 1rem; line-height: 2; width: 100%; max-width: 320px; }
         .diag-list.active li { opacity: 1; }
         .diag-list li { padding-left: 30px; position: relative; opacity: 0.4; transition: all 0.3s; }
-        .diag-list li::before { content: '⏳'; position: absolute; left: 0; }
-        .diag-list li.ok::before { content: '✅'; }
-        .diag-list li.fail::before { content: '❌'; }
+        .diag-list li::before { content: '\23F3'; position: absolute; left: 0; }
+        .diag-list li.ok::before { content: '\2705'; }
+        .diag-list li.fail::before { content: '\274C'; }
         .diag-list li.checking { font-weight: bold; color: var(--blue); }
         
         #action-btn { 
@@ -30,73 +30,83 @@
             touch-action: manipulation;
         }
         #action-btn:active { transform: scale(0.96); }
-        #action-btn:disabled { background: #ccc; box-shadow: none; cursor: not-allowed; }
+        #action-btn:disabled { background: #ccc; }
         #action-btn.state-checking { background: var(--orange); }
         #action-btn.state-error { background: var(--red); }
-        #action-btn.state-fallback { background: #9c27b0; }
         
         .hint { margin-top: 15px; font-size: 0.9rem; color: #666; min-height: 40px; max-width: 90%; line-height: 1.4; }
 
         #color-card { 
-            width: 65vw; height: 65vw; max-width: 320px; max-height: 320px; 
-            border-radius: 25px; box-shadow: 0 8px 25px rgba(0,0,0,0.15); 
-            margin: 20px 0; transition: transform 0.3s;
+            width: 70vw; height: 70vw; max-width: 340px; max-height: 340px; 
+            border-radius: 30px; box-shadow: 0 8px 25px rgba(0,0,0,0.15); 
+            margin: 20px 0; transition: transform 0.3s, background-color 0.5s ease;
+            position: relative;
         }
-        #color-card.correct { animation: pop 0.6s ease; box-shadow: 0 0 30px rgba(76,175,80,0.6); }
-        @keyframes pop { 0%{transform:scale(1)} 50%{transform:scale(1.1) rotate(2deg)} 100%{transform:scale(1)} }
+        #color-card.correct { animation: pop 0.7s ease; box-shadow: 0 0 40px rgba(76,175,80,0.7); }
+        #color-card.wrong { animation: shake 0.5s ease; }
+        #color-card.hint-shown::after {
+            content: attr(data-hint-emoji);
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 5rem;
+            opacity: 0.9;
+            pointer-events: none;
+        }
+        @keyframes pop { 0%{transform:scale(1)} 50%{transform:scale(1.15) rotate(3deg)} 100%{transform:scale(1)} }
+        @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }
         
         .indicators { display: flex; gap: 15px; align-items: center; margin-top: 10px; }
-        .mic-icon { width: 50px; height: 50px; border-radius: 50%; background: #e0e0e0; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; transition: all 0.3s; }
+        .mic-icon { width: 55px; height: 55px; border-radius: 50%; background: #e0e0e0; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; transition: all 0.3s; }
         .mic-icon.active { background: #ffcdd2; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(244,67,54,0.4)} 50%{box-shadow:0 0 0 10px rgba(244,67,54,0)} }
-        
-        .vol-bar { width: 8px; height: 50px; background: #ddd; border-radius: 4px; overflow: hidden; position: relative; }
-        .vol-fill { position: absolute; bottom: 0; left: 0; width: 100%; height: 0%; background: var(--green); transition: height 0.08s linear; }
+        .mic-icon.speaking { background: #bbdefb; animation: none; }
+        .mic-icon.paused { opacity: 0.4; animation: none; }
+        @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(244,67,54,0.4)} 50%{box-shadow:0 0 0 12px rgba(244,67,54,0)} }
 
-        /* СВОРАЧИВАЕМАЯ ПАНЕЛЬ ЛОГОВ */
+        .mic-reset-btn {
+            padding: 8px 16px; font-size: 0.85rem; background: #ff9800; color: white;
+            border: none; border-radius: 20px; cursor: pointer;
+            touch-action: manipulation; margin-left: 10px;
+            display: none;
+        }
+        .mic-reset-btn.show { display: block; }
+        .mic-reset-btn:active { transform: scale(0.95); }
+
+        .manual-input { display: none; margin-top: 20px; width: 100%; max-width: 340px; }
+        .manual-input.show { display: flex; flex-direction: column; gap: 10px; }
+        .color-buttons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        .color-btn {
+            padding: 14px 8px; border: 2px solid #ddd; border-radius: 12px;
+            background: white; font-size: 1rem; font-weight: 600; cursor: pointer;
+            touch-action: manipulation; transition: all 0.2s;
+        }
+        .color-btn:active { transform: scale(0.95); }
+        .color-btn.correct { border-color: var(--green); background: #e8f5e9; }
+
         #log-panel {
             position: fixed; bottom: 0; left: 0; right: 0;
             background: #1e1e1e; color: #ddd;
             font-family: 'Courier New', monospace; font-size: 11px; line-height: 1.4;
-            z-index: 100;
-            transition: height 0.3s ease;
-            height: 32px; /* свёрнута по умолчанию */
-            overflow: hidden;
-            border-top: 2px solid #333;
+            z-index: 100; transition: height 0.3s ease;
+            height: 32px; overflow: hidden; border-top: 2px solid #333;
         }
-        #log-panel.expanded {
-            height: 40vh;
-        }
+        #log-panel.expanded { height: 40vh; }
         
         .log-header {
-            position: sticky; top: 0;
-            background: #2d2d2d;
-            padding: 6px 10px;
-            display: flex; justify-content: space-between; align-items: center;
-            cursor: pointer;
-            border-bottom: 1px solid #3c3c3c;
-            user-select: none;
-            -webkit-tap-highlight-color: transparent;
+            position: sticky; top: 0; background: #2d2d2d;
+            padding: 6px 10px; display: flex; justify-content: space-between; align-items: center;
+            cursor: pointer; border-bottom: 1px solid #3c3c3c; user-select: none;
         }
-        .log-header:active { background: #3a3a3a; }
         .log-title { font-size: 11px; color: #aaa; display: flex; align-items: center; gap: 6px; }
         .log-toggle-icon { font-size: 14px; transition: transform 0.3s; }
         #log-panel.expanded .log-toggle-icon { transform: rotate(180deg); }
         
-        .log-actions { display: flex; gap: 6px; }
         .btn-log {
             background: #0e639c; color: white; border: none;
-            padding: 3px 10px; border-radius: 3px; font-size: 10px;
-            cursor: pointer; touch-action: manipulation;
+            padding: 3px 10px; border-radius: 3px; font-size: 10px; cursor: pointer;
         }
-        .btn-log:active { background: #1177bb; }
         
-        #log-content {
-            padding: 8px 10px;
-            overflow-y: auto;
-            height: calc(100% - 32px);
-            -webkit-overflow-scrolling: touch;
-        }
+        #log-content { padding: 8px 10px; overflow-y: auto; height: calc(100% - 32px); }
         .log-line { margin-bottom: 3px; word-break: break-word; border-bottom: 1px solid #2a2a2a; padding-bottom: 2px; }
         .log-time { color: #666; margin-right: 6px; }
         .log-info { color: #81d4fa; }
@@ -104,10 +114,17 @@
         .log-warn { color: #ffe082; }
         .log-err { color: #ef9a9a; font-weight: bold; }
         .log-stt { color: #ce93d8; }
+        .log-tts { color: #ffb74d; }
+        .log-filter { color: #90a4ae; font-style: italic; }
+        .log-watchdog { color: #ff8a65; }
 
         #win-screen h1 { font-size: 2.5rem; color: var(--green); }
-        .emoji-rain { position: fixed; font-size: 2rem; animation: fall 3s linear forwards; pointer-events: none; z-index: 50; }
+        .emoji-rain { position: fixed; font-size: 2.5rem; animation: fall 3s linear forwards; pointer-events: none; z-index: 50; }
         @keyframes fall { to { top: 110vh; transform: rotate(360deg); } }
+        
+        .stats { margin-top: 15px; font-size: 0.9rem; color: #666; max-width: 320px; text-align: left; }
+        .stats-title { font-weight: bold; margin-bottom: 5px; color: #333; }
+        .stat-row { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dashed #ddd; }
     </style>
 </head>
 <body>
@@ -116,31 +133,38 @@
     <h1>🎨 Назови цвет</h1>
     <ul class="diag-list" id="diag-list">
         <li id="d-api">Браузер поддерживает API</li>
-        <li id="d-secure">Безопасное соединение (HTTPS)</li>
-        <li id="d-url">Правильный URL (github.io)</li>
-        <li id="d-mic">Доступ к микрофону</li>
-        <li id="d-stt">Распознавание речи (Google)</li>
+        <li id="d-secure">HTTPS соединение</li>
+        <li id="d-mic">Микрофон доступен</li>
+        <li id="d-stt">Распознавание речи</li>
     </ul>
     <button id="action-btn" onclick="runDiagnostics()">▶ Запустить проверку</button>
+    <button id="manual-btn" onclick="startGame(true)" style="padding:14px 30px;font-size:1.1rem;background:#9c27b0;color:white;border:none;border-radius:50px;cursor:pointer;margin-top:10px;display:none;">
+        🎮 Играть без голоса
+    </button>
     <div class="hint" id="diag-hint">Нажмите кнопку и разрешите доступ к микрофону.</div>
 </div>
 
 <div id="game-screen" class="screen hidden">
-    <div style="font-size:1.8rem; font-weight:800; min-height:50px;" id="instruction">Какой это цвет?</div>
+    <div style="font-size:1.6rem; font-weight:800; min-height:50px;" id="instruction">Какой это цвет?</div>
     <div id="color-card"></div>
-    <div class="indicators">
-        <div class="vol-bar"><div class="vol-fill" id="vol-fill"></div></div>
+    <div class="indicators" id="voice-indicators">
         <div class="mic-icon" id="mic-icon">🎤</div>
+        <button class="mic-reset-btn" id="mic-reset-btn" onclick="hardResetSTT()"> Микрофон</button>
+    </div>
+    
+    <div class="manual-input" id="manual-input">
+        <div style="font-size:0.9rem; color:#666; margin-bottom:5px;">Нажми на цвет:</div>
+        <div class="color-buttons" id="color-buttons"></div>
     </div>
 </div>
 
 <div id="win-screen" class="screen hidden">
     <h1>🎉 Молодец!</h1>
-    <p style="margin:10px 0 25px; font-size:1.2rem;">Все цвета названы верно!</p>
-    <button onclick="location.reload()" style="padding:16px 40px;font-size:1.3rem;background:var(--green);color:white;border:none;border-radius:50px;cursor:pointer;">Играть ещё раз</button>
+    <p style="margin:10px 0 10px; font-size:1.2rem;">Все цвета названы!</p>
+    <div class="stats" id="stats"></div>
+    <button onclick="location.reload()" style="padding:16px 40px;font-size:1.3rem;background:var(--green);color:white;border:none;border-radius:50px;cursor:pointer;margin-top:15px;">Ещё раз</button>
 </div>
 
-<!-- СВОРАЧИВАЕМАЯ ПАНЕЛЬ ЛОГОВ -->
 <div id="log-panel">
     <div class="log-header" onclick="toggleLogs()">
         <span class="log-title">
@@ -149,7 +173,7 @@
             <span id="log-count" style="color:#666;">(0)</span>
         </span>
         <div class="log-actions">
-            <button class="btn-log" onclick="event.stopPropagation(); copyLogs()"> Копировать</button>
+            <button class="btn-log" onclick="event.stopPropagation(); copyLogs()">📋 Копировать</button>
         </div>
     </div>
     <div id="log-content"></div>
@@ -157,68 +181,102 @@
 
 <script>
 const COLORS = [
-    { name:"красный", hex:"#E53935" }, { name:"синий", hex:"#1E88E5" },
-    { name:"зеленый", hex:"#43A047" }, { name:"желтый", hex:"#FFD600" },
-    { name:"оранжевый", hex:"#FB8C00" }, { name:"фиолетовый", hex:"#8E24AA" },
-    { name:"черный", hex:"#263238" }, { name:"белый", hex:"#F5F5F5" },
-    { name:"розовый", hex:"#EC407A" }
+    { name:"красный", hex:"#E53935", emoji:"", hint:"помидор" },
+    { name:"синий", hex:"#1E88E5", emoji:"🌊", hint:"море" },
+    { name:"зеленый", hex:"#43A047", emoji:"", hint:"лягушка" },
+    { name:"желтый", hex:"#FFD600", emoji:"☀️", hint:"солнце" },
+    { name:"оранжевый", hex:"#FB8C00", emoji:"🍊", hint:"апельсин" },
+    { name:"фиолетовый", hex:"#8E24AA", emoji:"", hint:"виноград" },
+    { name:"черный", hex:"#263238", emoji:"🌙", hint:"ночь" },
+    { name:"белый", hex:"#F5F5F5", emoji:"❄️", hint:"снег" },
+    { name:"розовый", hex:"#EC407A", emoji:"🐷", hint:"свинка" }
 ];
 
 let state = {
-    idx: 0, found: new Set(), processing: false,
-    audioCtx: null, micStream: null, analyser: null,
-    recognition: null, volInterval: null,
-    lastSTTError: null
+    idx: 0, found: new Set(), 
+    recognition: null, useManualInput: false,
+    isTTSPlaying: false,
+    ttsHistory: [],
+    isPageVisible: true,
+    sttListening: false,
+    watchdogTimer: null,
+    gameOver: false,
+    lastWrongColor: null,
+    lastWrongTime: 0,
+    confusionStats: {},
+    lastSTTActivity: 0,
+    isResetting: false
 };
 
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const logs = [];
 
-// Сворачивание/разворачивание логов
-function toggleLogs() {
-    document.getElementById('log-panel').classList.toggle('expanded');
+function normalizeText(text) {
+    return text.toLowerCase().replace(/ё/g, 'е').replace(/[^а-яa-z\s]/g, '').trim();
 }
 
-function log(msg, type = 'info') {
+document.addEventListener('visibilitychange', function() {
+    state.isPageVisible = !document.hidden;
+    if (document.hidden) {
+        if (state.recognition && state.sttListening) {
+            try { state.recognition.stop(); } catch(e) {}
+            state.sttListening = false;
+        }
+        document.getElementById('mic-icon').classList.add('paused');
+    } else {
+        document.getElementById('mic-icon').classList.remove('paused');
+        if (state.recognition && !state.sttListening && !state.isTTSPlaying && !state.gameOver) {
+            setTimeout(function() { ensureListening(); }, 300);
+        }
+    }
+});
+
+function toggleLogs() { document.getElementById('log-panel').classList.toggle('expanded'); }
+
+function log(msg, type) {
+    type = type || 'info';
     const panel = document.getElementById('log-content');
     const line = document.createElement('div');
     line.className = 'log-line';
-    
-    const time = new Date().toLocaleTimeString('ru-RU', {hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    const time = new Date().toLocaleTimeString('ru-RU', {hour12:false});
     const ms = String(new Date().getMilliseconds()).padStart(3,'0');
-    
     let prefix = '';
-    switch(type) {
-        case 'ok': prefix = '✅'; break;
-        case 'err': prefix = '❌'; break;
-        case 'warn': prefix = '⚠️'; break;
-        case 'stt': prefix = ''; break;
-        default: prefix = '️';
-    }
+    if (type === 'ok') prefix = '✅';
+    else if (type === 'err') prefix = '❌';
+    else if (type === 'warn') prefix = '⚠️';
+    else if (type === 'stt') prefix = '🗣';
+    else if (type === 'tts') prefix = '🔊';
+    else if (type === 'filter') prefix = '🚫';
+    else if (type === 'watchdog') prefix = '🐕';
+    else prefix = 'ℹ️';
     
-    logs.push(`[${time}.${ms}] ${prefix} ${msg}`);
-    line.innerHTML = `<span class="log-time">[${time}.${ms}]</span><span class="log-${type}">${prefix} ${msg}</span>`;
+    logs.push('[' + time + '.' + ms + '] ' + prefix + ' ' + msg);
+    line.innerHTML = '<span class="log-time">[' + time + '.' + ms + ']</span><span class="log-' + type + '">' + prefix + ' ' + msg + '</span>';
     panel.appendChild(line);
     panel.scrollTop = panel.scrollHeight;
-    
-    // Обновляем счётчик
-    document.getElementById('log-count').textContent = `(${logs.length})`;
+    document.getElementById('log-count').textContent = '(' + logs.length + ')';
 }
 
 function copyLogs() {
-    if (logs.length === 0) { showToast(' Логи пустые'); return; }
-    const extra = `\n=== СИСТЕМА ===\nURL: ${location.href}\nProtocol: ${location.protocol}\nHost: ${location.hostname}\nUser Agent: ${navigator.userAgent}\nOnline: ${navigator.onLine}\n=== КОНЕЦ ===`;
-    navigator.clipboard.writeText(logs.join('\n') + extra).then(() => {
-        showToast('📋 Скопировано');
-    }).catch(() => showToast(' Ошибка копирования'));
+    if (logs.length === 0) return;
+    let statsText = '';
+    if (Object.keys(state.confusionStats).length > 0) {
+        statsText = '\n=== СТАТИСТИКА ПУТАНИЦЫ ===\n' + JSON.stringify(state.confusionStats, null, 2);
+    }
+    const extra = '\n=== СИСТЕМА ===\nURL: ' + location.href + '\nUser Agent: ' + navigator.userAgent + '\nOnline: ' + navigator.onLine + statsText + '\n=== КОНЕЦ ===';
+    navigator.clipboard.writeText(logs.join('\n') + extra).then(function() {
+        showToast(' Скопировано');
+    }).catch(function() {
+        showToast('Ошибка копирования');
+    });
 }
 
 function showToast(msg) {
     const toast = document.createElement('div');
-    toast.style.cssText = `position:fixed;bottom:50px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:white;padding:10px 20px;border-radius:20px;font-size:13px;z-index:200;`;
+    toast.style.cssText = 'position:fixed;bottom:50px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:white;padding:10px 20px;border-radius:20px;font-size:13px;z-index:200;';
     toast.textContent = msg;
     document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 2000);
+    setTimeout(function() { toast.remove(); }, 2000);
 }
 
 async function runDiagnostics() {
@@ -228,132 +286,95 @@ async function runDiagnostics() {
     
     const btn = document.getElementById('action-btn');
     const hint = document.getElementById('diag-hint');
+    const manualBtn = document.getElementById('manual-btn');
     
     document.getElementById('diag-list').classList.add('active');
     btn.className = 'state-checking';
     btn.textContent = 'Проверка...';
     btn.disabled = true;
-    
-    // Автоматически разворачиваем логи при диагностике
     document.getElementById('log-panel').classList.add('expanded');
-    
-    log('=== НАЧАЛО ДИАГНОСТИКИ ===', 'info');
-    log(`URL: ${location.href}`, 'info');
-    log(`Protocol: ${location.protocol}, Host: ${location.hostname}`, 'info');
+    log('=== ДИАГНОСТИКА ===', 'info');
 
-    // 1. API
     if (!SR) {
         setDiag('d-api', false);
-        showFail(btn, hint, 'Браузер не поддерживает распознавание речи.');
+        showFail(btn, hint, 'Браузер не поддерживает STT.');
+        manualBtn.style.display = 'block';
         return;
     }
     setDiag('d-api', true);
 
-    // 2. HTTPS
     const isSecure = window.isSecureContext || location.protocol === 'https:';
     if (!isSecure) {
         setDiag('d-secure', false);
         showFail(btn, hint, 'Нужен HTTPS!');
+        manualBtn.style.display = 'block';
         return;
     }
     setDiag('d-secure', true);
 
-    // 3. URL проверка
-    const isGitHubPages = location.hostname.includes('github.io') || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-    if (!isGitHubPages) {
-        setDiag('d-url', false);
-        log(`⚠️ НЕ github.io! Host: ${location.hostname}`, 'warn');
-        hint.textContent = '⚠️ Откройте через https://krivich.github.io/...';
-    } else {
-        setDiag('d-url', true);
-        log('✅ GitHub Pages URL', 'ok');
-    }
-
-    // 4. Микрофон
     setChecking('d-mic');
-    hint.textContent = 'Разрешите доступ к микрофону...';
-    
     try {
-        state.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        if (state.audioCtx.state === 'suspended') await state.audioCtx.resume();
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('mediaDevices недоступен');
+        log('mediaDevices OK', 'ok');
         setDiag('d-mic', true);
-        log(`Микрофон OK`, 'ok');
     } catch (e) {
         setDiag('d-mic', false);
-        showFail(btn, hint, `Микрофон: ${e.name}`);
+        showFail(btn, hint, 'Микрофон недоступен');
+        manualBtn.style.display = 'block';
         return;
     }
 
-    // 5. STT Тест
     setChecking('d-stt');
-    hint.textContent = '🗣 Скажите "КРАСНЫЙ"...';
+    hint.textContent = ' Скажите любой цвет...';
     log('=== ТЕСТ STT ===', 'info');
     
     const testRec = new SR();
     testRec.lang = 'ru-RU';
     testRec.interimResults = false;
     testRec.maxAlternatives = 3;
-    
+    testRec.continuous = false;
     let sttOk = false;
     let testTimer = null;
+    let hasSpeech = false;
     
-    testRec.onstart = () => log('STT onstart', 'stt');
-    testRec.onaudiostart = () => {
-        log('STT onaudiostart', 'stt');
-        testTimer = setTimeout(() => {
-            if (!sttOk) {
-                log('STT TIMEOUT 6s', 'warn');
-                testRec.stop();
-            }
-        }, 6000);
+    testRec.onstart = function() {
+        log('STT: onstart', 'stt');
+        testTimer = setTimeout(function() {
+            if (!sttOk) { log('STT: TIMEOUT 8s', 'warn'); testRec.stop(); }
+        }, 8000);
     };
-    testRec.onspeechstart = () => log('STT onspeechstart - речь!', 'stt');
-    
-    testRec.onresult = (e) => {
+    testRec.onaudiostart = function() { log('STT: onaudiostart', 'stt'); };
+    testRec.onsoundstart = function() { log('STT: onsoundstart', 'stt'); };
+    testRec.onspeechstart = function() { hasSpeech = true; log('STT: РЕЧЬ!', 'stt'); };
+    testRec.onresult = function(e) {
         sttOk = true;
         clearTimeout(testTimer);
-        const text = e.results[0][0].transcript;
-        log(`STT результат: "${text}"`, 'ok');
+        const r = e.results[0][0];
+        log('STT: "' + r.transcript + '" (' + (r.confidence*100).toFixed(0) + '%)', 'ok');
         testRec.stop();
     };
-    
-    testRec.onerror = (e) => {
-        state.lastSTTError = e.error;
-        log(`STT error: ${e.error}`, 'err');
-    };
-    
-    testRec.onend = () => {
-        log(`STT onend (ok=${sttOk})`, sttOk ? 'ok' : 'warn');
+    testRec.onerror = function(e) { log('STT: ERROR ' + e.error, 'err'); };
+    testRec.onend = function() {
+        log('STT: onend (ok=' + sttOk + ')', sttOk ? 'ok' : 'warn');
         clearTimeout(testTimer);
-        
         if (sttOk) {
             setDiag('d-stt', true);
-            hint.textContent = '✅ Запуск игры...';
-            setTimeout(() => startGame(), 800);
+            hint.textContent = '✅ Запуск...';
+            setTimeout(function() { startGame(false); }, 800);
         } else {
             setDiag('d-stt', false);
-            let msg = 'STT не сработал.';
-            if (state.lastSTTError === 'service-not-allowed') {
-                msg += ' Opera блокирует Google STT. Нужен VPN или Chrome.';
-            } else if (state.lastSTTError === 'network') {
-                msg += ' Проблема с сетью.';
-            } else if (!isGitHubPages) {
-                msg += ' Проблема с URL.';
-            } else {
-                msg += ' Попробуйте громче.';
-            }
-            showFail(btn, hint, msg);
+            showFail(btn, hint, 'STT не сработал. Говорите громче.');
+            manualBtn.style.display = 'block';
         }
     };
-    
     try {
         testRec.start();
         log('testRec.start() OK', 'ok');
     } catch(e) {
-        log(`start() error: ${e.message}`, 'err');
+        log('start(): ' + e.message, 'err');
         setDiag('d-stt', false);
-        showFail(btn, hint, `STT start: ${e.message}`);
+        showFail(btn, hint, 'STT: ' + e.message);
+        manualBtn.style.display = 'block';
     }
 }
 
@@ -369,42 +390,263 @@ function setChecking(id) {
 
 function showFail(btn, hint, msg) {
     btn.className = 'state-error';
-    btn.textContent = '🔄 Попробовать снова';
+    btn.textContent = '🔄 Ещё раз';
     btn.disabled = false;
     hint.textContent = msg;
 }
 
-function startGame() {
+function startGame(manualMode) {
     state.found.clear();
     state.idx = 0;
+    state.useManualInput = manualMode;
+    state.isTTSPlaying = false;
+    state.ttsHistory = [];
+    state.sttListening = false;
+    state.gameOver = false;
+    state.lastWrongColor = null;
+    state.confusionStats = {};
+    state.lastSTTActivity = Date.now();
+    state.isResetting = false;
     
     document.getElementById('start-screen').classList.add('hidden');
     document.getElementById('game-screen').classList.remove('hidden');
-    
-    // Сворачиваем логи в игре, чтобы не мешали
     document.getElementById('log-panel').classList.remove('expanded');
+    document.getElementById('mic-reset-btn').classList.remove('show');
     
-    if (state.audioCtx && state.micStream) {
-        const source = state.audioCtx.createMediaStreamSource(state.micStream);
-        state.analyser = state.audioCtx.createAnalyser();
-        state.analyser.fftSize = 256;
-        source.connect(state.analyser);
-        startVolumeMonitor();
+    if (manualMode) {
+        document.getElementById('voice-indicators').style.display = 'none';
+        setupManualInput();
+        showNextColor();
+        log('=== ИГРА (ручной) ===', 'ok');
+    } else {
+        document.getElementById('voice-indicators').style.display = 'flex';
+        initRecognition();
+        startSTTWatchdog();
+        showNextColor();
+        log('=== ИГРА ===', 'ok');
     }
-    
-    initRecognition();
-    showNextColor();
-    log('=== ИГРА ===', 'ok');
 }
 
-function startVolumeMonitor() {
-    const fill = document.getElementById('vol-fill');
-    const data = new Uint8Array(state.analyser.frequencyBinCount);
-    state.volInterval = setInterval(() => {
-        state.analyser.getByteFrequencyData(data);
-        const avg = data.reduce((a,b)=>a+b,0)/data.length;
-        fill.style.height = Math.min(100, avg * 2) + '%';
-    }, 50);
+function setupManualInput() {
+    const container = document.getElementById('color-buttons');
+    container.innerHTML = '';
+    COLORS.forEach(function(c, i) {
+        const btn = document.createElement('button');
+        btn.className = 'color-btn';
+        btn.textContent = c.name;
+        btn.onclick = function() { handleManualAnswer(i, btn); };
+        container.appendChild(btn);
+    });
+    document.getElementById('manual-input').classList.add('show');
+}
+
+function handleManualAnswer(idx, btn) {
+    if (state.isTTSPlaying) return;
+    if (idx === state.idx) {
+        btn.classList.add('correct');
+        handleCorrect();
+    } else {
+        btn.style.background = '#ffebee';
+        setTimeout(function() { btn.style.background = 'white'; }, 500);
+        handleWrongColor(COLORS[idx]);
+    }
+}
+
+function startSTTWatchdog() {
+    if (state.watchdogTimer) clearInterval(state.watchdogTimer);
+    
+    state.watchdogTimer = setInterval(function() {
+        if (state.useManualInput || !state.recognition) return;
+        if (!state.isPageVisible || state.gameOver) return;
+        if (state.isResetting || state.isTTSPlaying) return;
+        
+        const now = Date.now();
+        const timeSinceActivity = now - state.lastSTTActivity;
+        
+        if (state.sttListening) {
+            if (timeSinceActivity > 15000) {
+                log('STT молчит 15с — reset', 'watchdog');
+                hardResetSTT();
+            }
+            return;
+        }
+        
+        log('STT не слушает (activity=' + (timeSinceActivity/1000).toFixed(0) + 'с)', 'watchdog');
+        ensureListening();
+    }, 2000);
+}
+
+function ensureListening() {
+    if (!state.recognition || state.sttListening) return;
+    if (state.isTTSPlaying || !state.isPageVisible || state.gameOver) return;
+    
+    try {
+        state.recognition.start();
+        state.sttListening = true;
+        log('▶ STT запущен', 'ok');
+    } catch(e) {
+        if (e.message && e.message.includes('already started')) {
+            state.sttListening = true;
+        } else {
+            log('ensureListening: ' + (e.message || e), 'err');
+            hardResetSTT();
+        }
+    }
+}
+
+function hardResetSTT() {
+    if (state.isResetting) return;
+    state.isResetting = true;
+    log('🔄 HARD RESET STT', 'warn');
+    state.sttListening = false;
+    
+    if (state.recognition) {
+        try { state.recognition.stop(); } catch(e) {}
+        try { state.recognition.abort(); } catch(e) {}
+    }
+    
+    setTimeout(function() {
+        state.recognition = new SR();
+        state.recognition.lang = 'ru-RU';
+        state.recognition.continuous = true;
+        state.recognition.interimResults = true;
+        state.recognition.maxAlternatives = 3;
+        
+        state.recognition.onstart = function() {
+            state.sttListening = true;
+            state.lastSTTActivity = Date.now();
+            state.isResetting = false;
+            if (state.isPageVisible) {
+                document.getElementById('mic-icon').classList.add('active');
+            }
+            document.getElementById('mic-reset-btn').classList.remove('show');
+            log('STT: onstart (after reset)', 'stt');
+        };
+        state.recognition.onresult = function(e) {
+            if (state.isTTSPlaying || !state.isPageVisible || state.gameOver) return;
+            state.lastSTTActivity = Date.now();
+            const last = e.results[e.results.length - 1];
+            const text = last[0].transcript.toLowerCase().trim();
+            if (text.length < 2) return;
+            if (shouldIgnoreSTTResult(text)) return;
+            if (last.isFinal) {
+                log('Услышала: "' + text + '"', 'stt');
+                checkAnswer(text);
+            }
+        };
+        state.recognition.onerror = function(e) {
+            if (!state.isPageVisible || (state.isResetting && e.error === 'aborted')) return;
+            log('STT ошибка: ' + e.error, 'err');
+            if (e.error === 'no-speech' || e.error === 'aborted') {
+                state.sttListening = false;
+                setTimeout(function() { ensureListening(); }, 300);
+            } else if (e.error === 'network') {
+                state.sttListening = false;
+                setTimeout(function() { ensureListening(); }, 1000);
+            }
+        };
+        state.recognition.onend = function() {
+            state.sttListening = false;
+            if (!state.isTTSPlaying) {
+                document.getElementById('mic-icon').classList.remove('active');
+            }
+            log('STT: onend', 'stt');
+            if (state.isPageVisible && !state.isTTSPlaying && !state.gameOver && !state.isResetting) {
+                setTimeout(function() { ensureListening(); }, 300);
+            }
+        };
+        
+        try {
+            state.recognition.start();
+            state.sttListening = true;
+            state.lastSTTActivity = Date.now();
+            log('✅ STT перезапущен', 'ok');
+        } catch(e) {
+            log('Reset start failed: ' + (e.message || e), 'err');
+            state.isResetting = false;
+        }
+    }, 500);
+}
+
+function shouldIgnoreSTTResult(text) {
+    const now = Date.now();
+    const normalizedText = normalizeText(text);
+    
+    if (now < state.ttsIgnoreUntil) {
+        return true;
+    }
+    
+    const recentTTS = state.ttsHistory.filter(function(t) { return now - t.time < 3000; });
+    for (let i = 0; i < recentTTS.length; i++) {
+        const tts = recentTTS[i];
+        const ttsWords = tts.text.toLowerCase().replace(/ё/g, 'е').split(/\s+/).filter(function(w) { return w.length > 2; });
+        const textWords = normalizedText.split(/\s+/);
+        if (ttsWords.length > 0) {
+            const matches = ttsWords.filter(function(tw) {
+                return textWords.some(function(tw2) { return tw2.includes(tw) || tw.includes(tw2); });
+            });
+            if (matches.length >= Math.max(1, Math.ceil(ttsWords.length * 0.5))) {
+                return true;
+            }
+        }
+    }
+    
+    if (!containsColorWord(normalizedText)) {
+        return true;
+    }
+    return false;
+}
+
+function containsColorWord(text) {
+    const words = text.split(/\s+/).filter(function(w) { return w.length > 0; });
+    for (let i = 0; i < words.length; i++) {
+        const word = words[i];
+        for (let j = 0; j < COLORS.length; j++) {
+            const color = COLORS[j];
+            const colorName = color.name.replace(/ё/g, 'е');
+            if (word.includes(colorName) || colorName.includes(word)) return true;
+            if (word.length >= 2 && colorName.startsWith(word)) return true;
+            const maxDist = colorName.length > 7 ? 4 : colorName.length > 5 ? 3 : 2;
+            if (word.length >= 2 && levenshtein(word, colorName) <= maxDist) return true;
+        }
+    }
+    return false;
+}
+
+function findNearestColor(text) {
+    const normalizedText = normalizeText(text);
+    const words = normalizedText.split(/\s+/).filter(function(w) { return w.length > 0; });
+    let bestMatch = null;
+    let bestScore = Infinity;
+    let bestWord = '';
+    let matchType = '';
+    
+    for (let i = 0; i < words.length; i++) {
+        const word = words[i];
+        for (let j = 0; j < COLORS.length; j++) {
+            const color = COLORS[j];
+            const colorName = color.name.replace(/ё/g, 'е');
+            let score = Infinity;
+            let type = '';
+            
+            if (word === colorName) { score = 0; type = 'exact'; }
+            else if (word.includes(colorName) || colorName.includes(word)) { score = 0.5; type = 'contains'; }
+            else if (word.length >= 2 && colorName.startsWith(word)) { score = 1 + (colorName.length - word.length) * 0.3; type = 'prefix'; }
+            else if (word.length >= 2) {
+                const dist = levenshtein(word, colorName);
+                const maxDist = colorName.length > 7 ? 4 : colorName.length > 5 ? 3 : 2;
+                if (dist <= maxDist) { score = dist + 1; type = 'levenshtein'; }
+            }
+            
+            if (score < bestScore) {
+                bestScore = score;
+                bestMatch = color;
+                bestWord = word;
+                matchType = type;
+            }
+        }
+    }
+    return { color: bestMatch, score: bestScore, word: bestWord, type: matchType };
 }
 
 function initRecognition() {
@@ -412,98 +654,235 @@ function initRecognition() {
     state.recognition.lang = 'ru-RU';
     state.recognition.continuous = true;
     state.recognition.interimResults = true;
+    state.recognition.maxAlternatives = 3;
 
-    state.recognition.onstart = () => {
-        document.getElementById('mic-icon').classList.add('active');
+    state.recognition.onstart = function() {
+        state.sttListening = true;
+        state.lastSTTActivity = Date.now();
+        state.isResetting = false;
+        if (state.isPageVisible && !state.isTTSPlaying) {
+            document.getElementById('mic-icon').classList.add('active');
+            document.getElementById('mic-icon').classList.remove('speaking');
+        }
+        document.getElementById('mic-reset-btn').classList.remove('show');
+        log('STT: onstart', 'stt');
     };
-
-    state.recognition.onresult = (e) => {
-        if (state.processing) return;
+    state.recognition.onresult = function(e) {
+        if (state.isTTSPlaying || !state.isPageVisible || state.gameOver) return;
+        state.lastSTTActivity = Date.now();
         const last = e.results[e.results.length - 1];
         const text = last[0].transcript.toLowerCase().trim();
-        
-        if (last.isFinal || text.length > 2) {
-            log(`"${text}"`, 'stt');
+        if (text.length < 2) return;
+        if (shouldIgnoreSTTResult(text)) return;
+        if (last.isFinal) {
+            log('Услышала: "' + text + '"', 'stt');
             checkAnswer(text);
         }
     };
-
-    state.recognition.onerror = (e) => {
-        log(`Ошибка: ${e.error}`, 'err');
-        if (e.error === 'no-speech') setTimeout(() => state.recognition.start(), 500);
+    state.recognition.onerror = function(e) {
+        if (!state.isPageVisible || (state.isResetting && e.error === 'aborted')) return;
+        log('STT ошибка: ' + e.error, 'err');
+        if (e.error === 'no-speech' || e.error === 'aborted') {
+            state.sttListening = false;
+            setTimeout(function() { ensureListening(); }, 300);
+        } else if (e.error === 'network') {
+            state.sttListening = false;
+            setTimeout(function() { ensureListening(); }, 1000);
+        }
     };
-    
-    state.recognition.onend = () => {
-        document.getElementById('mic-icon').classList.remove('active');
-        if (!state.processing) setTimeout(() => state.recognition.start(), 500);
+    state.recognition.onend = function() {
+        state.sttListening = false;
+        if (!state.isTTSPlaying) {
+            document.getElementById('mic-icon').classList.remove('active');
+        }
+        log('STT: onend', 'stt');
+        if (state.isPageVisible && !state.isTTSPlaying && !state.gameOver && !state.isResetting) {
+            setTimeout(function() { ensureListening(); }, 300);
+        }
     };
-    
-    try { state.recognition.start(); } catch(e) {}
+    try {
+        state.recognition.start();
+        log('STT инициализирован', 'stt');
+    } catch(e) {
+        log('start: ' + (e.message || e), 'err');
+    }
 }
 
 function checkAnswer(text) {
     const target = COLORS[state.idx];
-    if (text.includes(target.name) || levenshtein(text, target.name) <= 2) {
+    const result = findNearestColor(text);
+    if (!result.color) {
+        log('Не распознано: "' + text + '"', 'warn');
+        return;
+    }
+    log('Распознан: "' + result.color.name + '" (' + result.type + ', "' + result.word + '")', 'stt');
+    if (result.color === target) {
         handleCorrect();
+    } else {
+        if (!state.confusionStats[target.name]) {
+            state.confusionStats[target.name] = { calledAs: {} };
+        }
+        const stats = state.confusionStats[target.name].calledAs;
+        stats[result.color.name] = (stats[result.color.name] || 0) + 1;
+        handleWrongColor(result.color);
     }
 }
 
+function handleWrongColor(namedColor) {
+    const now = Date.now();
+    if (state.lastWrongColor === namedColor && now - state.lastWrongTime < 4000) {
+        return;
+    }
+    state.lastWrongColor = namedColor;
+    state.lastWrongTime = now;
+    
+    const card = document.getElementById('color-card');
+    card.classList.add('wrong');
+    setTimeout(function() { card.classList.remove('wrong'); }, 500);
+    log('❌ Назван "' + namedColor.name + '" вместо "' + COLORS[state.idx].name + '"', 'warn');
+    
+    card.setAttribute('data-hint-emoji', COLORS[state.idx].emoji);
+    card.classList.add('hint-shown');
+    
+    speak('Попробуй ещё раз!', function() {
+        card.classList.remove('hint-shown');
+        if (!state.gameOver) ensureListening();
+    });
+}
+
 function levenshtein(a, b) {
-    const m = [], n = a.length, o = b.length;
+    const m = [];
+    const n = a.length;
+    const o = b.length;
     for (let i = 0; i <= n; i++) m[i] = [i];
     for (let j = 0; j <= o; j++) m[0][j] = j;
-    for (let i = 1; i <= n; i++)
-        for (let j = 1; j <= o; j++)
-            m[i][j] = a[i-1] === b[j-1] ? m[i-1][j-1] : 1 + Math.min(m[i-1][j-1], m[i][j-1], m[i-1][j]);
+    for (let i = 1; i <= n; i++) {
+        for (let j = 1; j <= o; j++) {
+            if (a[i-1] === b[j-1]) {
+                m[i][j] = m[i-1][j-1];
+            } else {
+                m[i][j] = 1 + Math.min(m[i-1][j-1], m[i][j-1], m[i-1][j]);
+            }
+        }
+    }
     return m[n][o];
 }
 
 function handleCorrect() {
-    state.processing = true;
-    document.getElementById('color-card').classList.add('correct');
-    speak(`Молодец! Это ${COLORS[state.idx].name}!`);
+    const card = document.getElementById('color-card');
+    card.classList.add('correct');
     state.found.add(state.idx);
     
-    setTimeout(() => {
-        document.getElementById('color-card').classList.remove('correct');
-        state.processing = false;
-        if (state.found.size >= COLORS.length) showWin();
-        else showNextColor();
-    }, 1500);
+    const colorName = COLORS[state.idx].name;
+    // УДАРЕНИЕ: "МолодЕц! Э"то "цветА" (а не "цвЕта")
+    const phrase = 'Молодец! Это ' + colorName + '!';
+    
+    speak(phrase, function() {
+        card.classList.remove('correct');
+        if (state.found.size >= COLORS.length) {
+            showWin();
+        } else {
+            showNextColor();
+        }
+    });
 }
 
 function showNextColor() {
-    const available = COLORS.filter((_, i) => !state.found.has(i));
+    const available = COLORS.filter(function(_, i) { return !state.found.has(i); });
     const c = available[Math.floor(Math.random() * available.length)];
     state.idx = COLORS.indexOf(c);
     
     document.getElementById('instruction').textContent = 'Какой это цвет?';
-    document.getElementById('color-card').style.backgroundColor = c.hex;
-    speak('Назови цвет!');
+    const card = document.getElementById('color-card');
+    card.style.backgroundColor = c.hex;
+    card.classList.remove('hint-shown');
+    card.removeAttribute('data-hint-emoji');
+    
+    setTimeout(function() {
+        speak('Назови цвет!', function() {
+            if (!state.gameOver) ensureListening();
+        });
+    }, 300);
 }
 
-function speak(text) {
-    if ('speechSynthesis' in window) {
-        speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(text);
-        u.lang = 'ru-RU'; u.rate = 0.9;
-        speechSynthesis.speak(u);
+function speak(text, callback) {
+    if (!('speechSynthesis' in window)) {
+        if (callback) callback();
+        return;
     }
+    
+    speechSynthesis.cancel();
+    
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'ru-RU';
+    u.rate = 0.85;
+    
+    state.isTTSPlaying = true;
+    state.ttsHistory.push({ text: text, time: Date.now() });
+    if (state.ttsHistory.length > 5) state.ttsHistory.shift();
+    
+    document.getElementById('mic-icon').classList.add('speaking');
+    document.getElementById('mic-icon').classList.remove('active');
+    
+    log('TTS: "' + text + '"', 'tts');
+    
+    u.onend = function() {
+        state.isTTSPlaying = false;
+        document.getElementById('mic-icon').classList.remove('speaking');
+        log('TTS: конец', 'filter');
+        if (callback) callback();
+    };
+    u.onerror = function() {
+        state.isTTSPlaying = false;
+        document.getElementById('mic-icon').classList.remove('speaking');
+        if (callback) callback();
+    };
+    
+    speechSynthesis.speak(u);
 }
 
 function showWin() {
+    state.gameOver = true;
     document.getElementById('game-screen').classList.add('hidden');
     document.getElementById('win-screen').classList.remove('hidden');
-    speak('Поздравляю!');
-    for(let i=0; i<20; i++) {
-        const el = document.createElement('div');
-        el.className = 'emoji-rain';
-        el.textContent = ['⭐','🎈',''][Math.floor(Math.random()*3)];
-        el.style.left = Math.random()*100+'vw';
-        el.style.top = '-50px';
-        el.style.animationDuration = (2+Math.random()*2)+'s';
-        document.body.appendChild(el);
+    if (state.recognition) {
+        try { state.recognition.stop(); } catch(e) {}
     }
+    if (state.watchdogTimer) {
+        clearInterval(state.watchdogTimer);
+    }
+    
+    const statsEl = document.getElementById('stats');
+    if (Object.keys(state.confusionStats).length > 0) {
+        let html = '<div class="stats-title">📊 Что путала:</div>';
+        for (const color in state.confusionStats) {
+            const data = state.confusionStats[color];
+            const calls = Object.entries(data.calledAs).sort(function(a,b) { return b[1] - a[1]; })
+                .map(function(entry) { return entry[0] + ' (' + entry[1] + '×)'; }).join(', ');
+            html += '<div class="stat-row"><span>' + color + '</span><span>→ ' + calls + '</span></div>';
+        }
+        statsEl.innerHTML = html;
+    } else {
+        statsEl.innerHTML = '<div class="stats-title">🎯 Без ошибок!</div>';
+    }
+    
+    // УДАРЕНИЕ: "Поздравляю! Все цветА!"
+    const winPhrase = 'Поздравляю! Все цвет\u0430\u0301!';
+    
+    speak(winPhrase, function() {
+        log('=== ПОБЕДА! ===', 'ok');
+        const emojis = ['⭐', '🎉', '✨', '🌟', '🎊'];
+        for(let i = 0; i < 30; i++) {
+            const el = document.createElement('div');
+            el.className = 'emoji-rain';
+            el.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+            el.style.left = Math.random() * 100 + 'vw';
+            el.style.top = '-50px';
+            el.style.animationDuration = (2 + Math.random() * 2) + 's';
+            el.style.animationDelay = Math.random() + 's';
+            document.body.appendChild(el);
+        }
+    });
 }
 
 log('Готово. Нажмите "Запустить проверку".', 'info');
