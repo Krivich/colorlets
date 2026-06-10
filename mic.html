@@ -149,7 +149,7 @@
     <div id="color-card"></div>
     <div class="indicators" id="voice-indicators">
         <div class="mic-icon" id="mic-icon">🎤</div>
-        <button class="mic-reset-btn" id="mic-reset-btn" onclick="hardResetSTT()"> Микрофон</button>
+        <button class="mic-reset-btn" id="mic-reset-btn" onclick="hardResetSTT()">🔄 Микрофон</button>
     </div>
     
     <div class="manual-input" id="manual-input">
@@ -180,13 +180,15 @@
 </div>
 
 <script>
+const VERSION = '1.0';
+
 const COLORS = [
-    { name:"красный", hex:"#E53935", emoji:"", hint:"помидор" },
+    { name:"красный", hex:"#E53935", emoji:"🍅", hint:"помидор" },
     { name:"синий", hex:"#1E88E5", emoji:"🌊", hint:"море" },
-    { name:"зеленый", hex:"#43A047", emoji:"", hint:"лягушка" },
+    { name:"зеленый", hex:"#43A047", emoji:"🐸", hint:"лягушка" },
     { name:"желтый", hex:"#FFD600", emoji:"☀️", hint:"солнце" },
     { name:"оранжевый", hex:"#FB8C00", emoji:"🍊", hint:"апельсин" },
-    { name:"фиолетовый", hex:"#8E24AA", emoji:"", hint:"виноград" },
+    { name:"фиолетовый", hex:"#8E24AA", emoji:"🍇", hint:"виноград" },
     { name:"черный", hex:"#263238", emoji:"🌙", hint:"ночь" },
     { name:"белый", hex:"#F5F5F5", emoji:"❄️", hint:"снег" },
     { name:"розовый", hex:"#EC407A", emoji:"🐷", hint:"свинка" }
@@ -205,7 +207,8 @@ let state = {
     lastWrongTime: 0,
     confusionStats: {},
     lastSTTActivity: 0,
-    isResetting: false
+    isResetting: false,
+    ttsIgnoreUntil: 0
 };
 
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -263,9 +266,9 @@ function copyLogs() {
     if (Object.keys(state.confusionStats).length > 0) {
         statsText = '\n=== СТАТИСТИКА ПУТАНИЦЫ ===\n' + JSON.stringify(state.confusionStats, null, 2);
     }
-    const extra = '\n=== СИСТЕМА ===\nURL: ' + location.href + '\nUser Agent: ' + navigator.userAgent + '\nOnline: ' + navigator.onLine + statsText + '\n=== КОНЕЦ ===';
+    const extra = '\n=== СИСТЕМА ===\nVersion: ' + VERSION + '\nURL: ' + location.href + '\nUser Agent: ' + navigator.userAgent + '\nOnline: ' + navigator.onLine + statsText + '\n=== КОНЕЦ ===';
     navigator.clipboard.writeText(logs.join('\n') + extra).then(function() {
-        showToast(' Скопировано');
+        showToast('📋 Скопировано');
     }).catch(function() {
         showToast('Ошибка копирования');
     });
@@ -293,7 +296,7 @@ async function runDiagnostics() {
     btn.textContent = 'Проверка...';
     btn.disabled = true;
     document.getElementById('log-panel').classList.add('expanded');
-    log('=== ДИАГНОСТИКА ===', 'info');
+    log('=== ДИАГНОСТИКА v' + VERSION + ' ===', 'info');
 
     if (!SR) {
         setDiag('d-api', false);
@@ -325,7 +328,7 @@ async function runDiagnostics() {
     }
 
     setChecking('d-stt');
-    hint.textContent = ' Скажите любой цвет...';
+    hint.textContent = '🗣 Скажите любой цвет...';
     log('=== ТЕСТ STT ===', 'info');
     
     const testRec = new SR();
@@ -407,6 +410,7 @@ function startGame(manualMode) {
     state.confusionStats = {};
     state.lastSTTActivity = Date.now();
     state.isResetting = false;
+    state.ttsIgnoreUntil = 0;
     
     document.getElementById('start-screen').classList.add('hidden');
     document.getElementById('game-screen').classList.remove('hidden');
@@ -471,7 +475,6 @@ function startSTTWatchdog() {
             return;
         }
         
-        log('STT не слушает (activity=' + (timeSinceActivity/1000).toFixed(0) + 'с)', 'watchdog');
         ensureListening();
     }, 2000);
 }
@@ -746,7 +749,6 @@ function handleWrongColor(namedColor) {
     
     speak('Попробуй ещё раз!', function() {
         card.classList.remove('hint-shown');
-        if (!state.gameOver) ensureListening();
     });
 }
 
@@ -774,7 +776,6 @@ function handleCorrect() {
     state.found.add(state.idx);
     
     const colorName = COLORS[state.idx].name;
-    // УДАРЕНИЕ: "МолодЕц! Э"то "цветА" (а не "цвЕта")
     const phrase = 'Молодец! Это ' + colorName + '!';
     
     speak(phrase, function() {
@@ -798,9 +799,18 @@ function showNextColor() {
     card.classList.remove('hint-shown');
     card.removeAttribute('data-hint-emoji');
     
+    // КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: запускаем STT СРАЗУ, ДО того как TTS начнёт говорить
+    // Пока TTS говорит "Назови цвет!" (1.5с), STT стабилизируется и фильтрует эхо
+    // К моменту когда ребёнок должен ответить — микрофон уже полностью готов
+    ensureListening();
+    
     setTimeout(function() {
         speak('Назови цвет!', function() {
-            if (!state.gameOver) ensureListening();
+            // TTS закончил — STT уже должен быть запущен и стабилизирован
+            // Если по какой-то причине STT остановился (Chrome no-speech), перезапустим
+            if (!state.sttListening && !state.gameOver) {
+                ensureListening();
+            }
         });
     }, 300);
 }
@@ -828,12 +838,14 @@ function speak(text, callback) {
     
     u.onend = function() {
         state.isTTSPlaying = false;
+        state.ttsIgnoreUntil = Date.now() + 400;
         document.getElementById('mic-icon').classList.remove('speaking');
         log('TTS: конец', 'filter');
         if (callback) callback();
     };
     u.onerror = function() {
         state.isTTSPlaying = false;
+        state.ttsIgnoreUntil = Date.now() + 400;
         document.getElementById('mic-icon').classList.remove('speaking');
         if (callback) callback();
     };
@@ -866,7 +878,6 @@ function showWin() {
         statsEl.innerHTML = '<div class="stats-title">🎯 Без ошибок!</div>';
     }
     
-    // УДАРЕНИЕ: "Поздравляю! Все цветА!"
     const winPhrase = 'Поздравляю! Все цвет\u0430\u0301!';
     
     speak(winPhrase, function() {
@@ -885,7 +896,7 @@ function showWin() {
     });
 }
 
-log('Готово. Нажмите "Запустить проверку".', 'info');
+log('Готово. Версия ' + VERSION + '. Нажмите "Запустить проверку".', 'info');
 </script>
 </body>
 </html>
