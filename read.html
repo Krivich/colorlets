@@ -1,0 +1,1448 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Читай со мной</title>
+    <style>
+        :root { --bg: #f8f9fa; --text: #333; --blue: #2196F3; --green: #4caf50; --red: #f44336; --orange: #FF9800; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; user-select: none; -webkit-tap-highlight-color: transparent; color: var(--text); }
+
+        .screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; }
+        .hidden { display: none !important; }
+
+        h1 { font-size: 2rem; margin-bottom: 15px; }
+
+        .diag-list { list-style: none; text-align: left; margin: 15px 0; font-size: 1rem; line-height: 2; width: 100%; max-width: 320px; }
+        .diag-list.active li { opacity: 1; }
+        .diag-list li { padding-left: 30px; position: relative; opacity: 0.4; transition: all 0.3s; }
+        .diag-list li::before { content: '\23F3'; position: absolute; left: 0; }
+        .diag-list li.ok::before { content: '\2705'; }
+        .diag-list li.fail::before { content: '\274C'; }
+        .diag-list li.checking { font-weight: bold; color: var(--blue); }
+
+        #action-btn {
+            padding: 18px 40px; font-size: 1.4rem; background: var(--blue); color: white;
+            border: none; border-radius: 50px; cursor: pointer;
+            box-shadow: 0 4px 15px rgba(33,150,243,0.3);
+            transition: all 0.2s; min-width: 260px; margin-top: 10px;
+            touch-action: manipulation;
+        }
+        #action-btn:active { transform: scale(0.96); }
+        #action-btn:disabled { background: #ccc; }
+        #action-btn.state-checking { background: var(--orange); }
+        #action-btn.state-error { background: var(--red); }
+
+        .hint { margin-top: 15px; font-size: 0.9rem; color: #666; min-height: 40px; max-width: 90%; line-height: 1.4; }
+
+        .indicators { display: flex; justify-content: center; align-items: center; gap: 12px; flex-shrink: 0; }
+        .mic-icon { width: 40px; height: 40px; border-radius: 50%; background: #ccc; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; transition: all 0.3s; flex-shrink: 0; }
+        .mic-icon.recording { background: #4caf50; animation: pulse 1.5s infinite; }
+        .mic-icon.speaking { background: #42a5f5; animation: none; }
+        @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(76,175,80,0.4)} 50%{box-shadow:0 0 0 10px rgba(76,175,80,0)} }
+
+        .mic-reset-btn {
+            padding: 6px 12px; font-size: 0.8rem; background: #ff9800; color: white;
+            border: none; border-radius: 16px; cursor: pointer;
+            touch-action: manipulation; display: none; white-space: nowrap;
+        }
+        .mic-reset-btn.show { display: inline-block; }
+        .mic-reset-btn:active { transform: scale(0.95); }
+
+        #log-panel {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: #1e1e1e; color: #ddd;
+            font-family: 'Courier New', monospace; font-size: 11px; line-height: 1.4;
+            z-index: 100; transition: height 0.3s ease;
+            height: 32px; overflow: hidden; border-top: 2px solid #333;
+        }
+        #log-panel.expanded { height: 40vh; }
+
+        .log-header {
+            position: sticky; top: 0; background: #2d2d2d;
+            padding: 6px 10px; display: flex; justify-content: space-between; align-items: center;
+            cursor: pointer; border-bottom: 1px solid #3c3c3c; user-select: none;
+        }
+        .log-title { font-size: 11px; color: #aaa; display: flex; align-items: center; gap: 6px; }
+        .log-toggle-icon { font-size: 14px; transition: transform 0.3s; }
+        #log-panel.expanded .log-toggle-icon { transform: rotate(180deg); }
+
+        .btn-log {
+            background: #0e639c; color: white; border: none;
+            padding: 3px 10px; border-radius: 3px; font-size: 10px; cursor: pointer;
+        }
+
+        #log-content { padding: 8px 10px; overflow-y: auto; height: calc(100% - 32px); }
+        .log-line { margin-bottom: 3px; word-break: break-word; border-bottom: 1px solid #2a2a2a; padding-bottom: 2px; }
+        .log-time { color: #666; margin-right: 6px; }
+        .log-info { color: #81d4fa; }
+        .log-ok { color: #a5d6a7; font-weight: bold; }
+        .log-warn { color: #ffe082; }
+        .log-err { color: #ef9a9a; font-weight: bold; }
+        .log-stt { color: #ce93d8; }
+        .log-tts { color: #ffb74d; }
+        .log-filter { color: #90a4ae; font-style: italic; }
+        .log-watchdog { color: #ff8a65; }
+        .log-debug { color: #b39ddb; }
+
+        #win-screen h1 { font-size: 2.5rem; color: var(--green); }
+        .emoji-rain { position: fixed; font-size: 2.5rem; animation: fall 3s linear forwards; pointer-events: none; z-index: 50; }
+        @keyframes fall { to { top: 110vh; transform: rotate(360deg); } }
+
+        .stats { margin-top: 15px; font-size: 0.9rem; color: #666; max-width: 320px; text-align: left; }
+        .stats-title { font-weight: bold; margin-bottom: 5px; color: #333; }
+        .stat-row { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dashed #ddd; }
+
+        #game-screen { justify-content: flex-start; padding: 8px 10px 38px; }
+        #game-screen .phrase-counter { flex-shrink: 0; margin: 4px 0; }
+        #game-screen .progress-bar { flex-shrink: 0; margin: 6px auto; }
+        #game-screen #phrase-container { flex: 1; min-height: 0; padding: 12px 8px; margin: 4px 0; width: 100%; }
+        #game-screen .indicators { margin-top: auto; padding: 0 0 6px; }
+
+        .word-row { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px; margin: 2px 0; }
+
+        #phrase-container {
+            width: 100%;
+            max-width: 600px;
+            padding: 30px 20px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            margin: 20px 0;
+            min-height: 200px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .phrase-line {
+            font-size: 2.5rem;
+            font-weight: 600;
+            line-height: 1.4;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0;
+        }
+
+        .letter {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 1.8rem;
+            height: 3rem;
+            padding: 2px 6px;
+            margin: 2px;
+            border-radius: 8px;
+            font-size: 1.5rem;
+            line-height: 1;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .letter.pending {
+            background: #f5f5f5;
+            color: #999;
+        }
+
+        .letter.spoken {
+            background: var(--green);
+            color: white;
+            animation: highlight 0.5s ease;
+            box-shadow: 0 4px 12px rgba(76,175,80,0.3);
+        }
+
+        .letter.current {
+            background: var(--orange);
+            color: white;
+            animation: pulse-current 1.5s infinite;
+        }
+
+        @keyframes highlight {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.15); }
+            100% { transform: scale(1); }
+        }
+
+        @keyframes pulse-current {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(255,152,0,0.5); }
+            50% { box-shadow: 0 0 0 10px rgba(255,152,0,0); }
+        }
+
+        .syllable-separator {
+            display: inline-flex;
+            align-items: center;
+            font-size: 0.5rem;
+            color: #bbb;
+            margin: 0 1px;
+            opacity: 0.6;
+        }
+
+        .word-separator {
+            display: inline-block;
+            width: 20px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            max-width: 600px;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 10px;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--green), var(--blue));
+            border-radius: 10px;
+            transition: width 0.5s ease;
+        }
+
+        .phrase-counter {
+            font-size: 1.1rem;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .skip-btn {
+            padding: 8px 18px; font-size: 0.85rem; background: #9e9e9e; color: white;
+            border: none; border-radius: 20px; cursor: pointer;
+            touch-action: manipulation; white-space: nowrap;
+        }
+        .skip-btn:active { transform: scale(0.95); }
+
+        @media (min-width: 600px) {
+            #game-screen { padding: 20px 30px 38px; }
+            #game-screen #phrase-container { padding: 30px 20px; margin: 10px 0; }
+            .word-row { gap: 6px; margin: 4px 0; }
+            .letter { min-width: 2.2rem; height: 2.8rem; padding: 4px 10px; margin: 3px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="start-screen" class="screen">
+    <h1>📖 Читай со мной</h1>
+    <ul class="diag-list" id="diag-list">
+        <li id="d-api">Браузер поддерживает API</li>
+        <li id="d-secure">HTTPS соединение</li>
+        <li id="d-mic">Микрофон доступен</li>
+        <li id="d-stt">Распознавание речи</li>
+    </ul>
+    <button id="action-btn" onclick="runDiagnostics()">▶ Запустить проверку</button>
+    <button id="manual-btn" onclick="startGame(true)" style="padding:14px 30px;font-size:1.1rem;background:#9c27b0;color:white;border:none;border-radius:50px;cursor:pointer;margin-top:10px;display:none;">
+        🎮 Играть без голоса
+    </button>
+    <div class="hint" id="diag-hint">Нажмите кнопку и разрешите доступ к микрофону.</div>
+</div>
+
+<div id="game-screen" class="screen hidden">
+    <div class="phrase-counter" id="phrase-counter">Фраза 1 из 10</div>
+    <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+    </div>
+
+    <div id="phrase-container">
+        <div class="phrase-line" id="phrase-display"></div>
+    </div>
+
+    <div class="indicators" id="voice-indicators">
+        <div class="mic-icon" id="mic-icon">🎤</div>
+        <button class="skip-btn" onclick="skipPhrase()">Пропустить</button>
+        <button class="mic-reset-btn" id="mic-reset-btn" onclick="hardResetSTT()">🔄</button>
+    </div>
+</div>
+
+<div id="win-screen" class="screen hidden">
+    <h1>🎉 Отлично!</h1>
+    <p style="margin:10px 0 10px; font-size:1.2rem;">Все фразы прочитаны!</p>
+    <div class="stats" id="stats"></div>
+    <button onclick="location.reload()" style="padding:16px 40px;font-size:1.3rem;background:var(--green);color:white;border:none;border-radius:50px;cursor:pointer;margin-top:15px;">Ещё раз</button>
+</div>
+
+<div id="log-panel">
+    <div class="log-header" onclick="toggleLogs()">
+        <span class="log-title">
+            <span class="log-toggle-icon">▲</span>
+            <span>Логи</span>
+            <span id="log-count" style="color:#666;">(0)</span>
+        </span>
+        <div class="log-actions">
+            <button class="btn-log" onclick="event.stopPropagation(); copyLogs()">📋 Копировать</button>
+        </div>
+    </div>
+    <div id="log-content"></div>
+</div>
+
+<script>
+    const VERSION = '1.7';
+
+    const PHRASES = [
+        "мама",
+        "папа",
+        "кот",
+        "дом",
+        "мама мыла раму",
+        "кот спит",
+        "собака лает",
+        "птица поёт",
+        "я люблю читать",
+        "солнце светит ярко",
+        // Короткие фразы с единорогами
+        "Там живёт единорог.",
+        "У него белый рог.",
+        "Единорог любит лес.",
+        "Он быстрый и смелый.",
+        "Грива сияет ярко.",
+        "Единорог пьёт воду.",
+        "В небе радуга.",
+        "Единорог дарит свет.",
+        "Он наш верный друг.",
+        "Единорог прыгает высоко.",
+
+        // Фразы посложнее (4-5 слов)
+        "Белый единорог гуляет в парке.",
+        "Магия единорога исцеляет всех.",
+        "Золотой рог светится в темноте.",
+        "Единорог летит над облаками.",
+        "Мы видели чудо в лесу.",
+        "Единорог ест сладкие яблоки.",
+        "Хвост единорога похож на шёлк.",
+        "Он охраняет волшебный источник.",
+        "Единорог играет с бабочками.",
+        "В сказке есть добрый герой.",
+
+        // Более длинные и интересные (6-7 слов)
+        "Единорог оставил след из звёзд.",
+        "Мы нашли тропинку к замку.",
+        "Единорог умеет говорить с ветром.",
+        "Волшебная пыльца падает с неба.",
+        "Единорог спас принцессу от дракона.",
+        "Он носит корону из цветов.",
+        "Единорог знает все тайны леса.",
+        "Радуга появилась после тёплого дождя.",
+        "Единорог подарил нам своё перо.",
+        "Сказка про единорога никогда не кончается.",
+
+        // Еще магия и природа
+        "Лесные феи танцуют вокруг него.",
+        "Единорог любит смотреть на звёзды.",
+        "У него копыта цвета серебра.",
+        "Единорог прячется за старым дубом.",
+        "Волшебство начинается с доброй улыбки.",
+        "Единорог несёт мир всем людям.",
+        "Он оставил след на снегу.",
+        "Единорог поёт тихую ночную песню.",
+        "В его глазах отражается луна.",
+        "Единорог бежит быстрее ветра.",
+
+        // Действия и приключения
+        "Давай покормим единорога морковкой.",
+        "Единорог помог нам перейти реку.",
+        "Он нашёл потерянный ключик.",
+        "Единорог рисует радугу хвостом.",
+        "В горах живёт старый мудрец.",
+        "Единорог учит нас быть добрыми.",
+        "Мы верхом на единороге летим.",
+        "Единорог боится только темноты.",
+        "Он светится как маленький фонарик.",
+        "Единорог ждёт нас у моста.",
+
+        // Эмоции и ощущения
+        "Как прекрасно видеть настоящего единорога!",
+        "Единорог дарит радость и тепло.",
+        "Мы чувствуем магию вокруг себя.",
+        "Единорог очень ласковый и нежный.",
+        "Он улыбается нам своей доброй улыбкой.",
+        "Единорог любит играть в прятки.",
+        "Вокруг него порхают яркие птицы.",
+        "Единорог знает дорогу домой.",
+        "Он хранитель всех лесных тайн.",
+        "Единорог приносит удачу каждому.",
+
+        // Финальные сложные предложения
+        "Единорог превратил тыкву в карету.",
+        "Мы написали письмо доброму волшебнику.",
+        "Единорог летит сквозь серебряные тучи.",
+        "Он собрал букет из ландышей.",
+        "Единорог шепчет заклинание на ушко.",
+        "Волшебный лес полон чудесных звуков.",
+        "Единорог накрыл нас тёплым одеялом.",
+        "Он рассказал нам древнюю легенду.",
+        "Единорог машет нам своим хвостом.",
+        "Спасибо, единорог, за эту сказку!"
+    ];
+
+    const LETTER_PRONUNCIATION_MAP = {
+        'а': ['а', 'аа'],
+        'б': ['б', 'бэ', 'бэ'],
+        'в': ['в', 'вэ', 'ве'],
+        'г': ['г', 'гэ', 'ге'],
+        'д': ['д', 'дэ', 'де'],
+        'е': ['е', 'ее'],
+        'ё': ['ё', 'ее'],
+        'ж': ['ж', 'жэ', 'же'],
+        'з': ['з', 'зэ', 'зе'],
+        'и': ['и', 'ии'],
+        'й': ['й', 'ий', 'и краткое'],
+        'к': ['к', 'ка', 'кэ', 'кэ'],
+        'л': ['л', 'эл', 'эль', 'ле'],
+        'м': ['м', 'эм', 'эм', 'ма'],
+        'н': ['н', 'эн', 'эн', 'на'],
+        'о': ['о', 'оо'],
+        'п': ['п', 'пэ', 'пе'],
+        'р': ['р', 'эр', 'эр', 'ра'],
+        'с': ['с', 'эс', 'эс', 'са'],
+        'т': ['т', 'тэ', 'те'],
+        'у': ['у', 'уу'],
+        'ф': ['ф', 'эф', 'эф', 'фа'],
+        'х': ['х', 'ха', 'хэ'],
+        'ц': ['ц', 'цэ', 'це'],
+        'ч': ['ч', 'чэ', 'че'],
+        'ш': ['ш', 'ша', 'шэ'],
+        'щ': ['щ', 'ща', 'щэ'],
+        'ъ': ['ъ', 'твёрдый знак'],
+        'ы': ['ы', 'ыы'],
+        'ь': ['ь', 'мягкий знак'],
+        'э': ['э', 'ээ'],
+        'ю': ['ю', 'юю'],
+        'я': ['я', 'яя']
+    };
+
+    let state = {
+        phraseIdx: 0,
+        phraseData: null,
+        spokenIndices: new Set(),
+        recognition: null,
+        useManualInput: false,
+        isTTSPlaying: false,
+        ttsHistory: [],
+        isPageVisible: true,
+        sttListening: false,
+        watchdogTimer: null,
+        gameOver: false,
+        lastSTTActivity: 0,
+        isResetting: false,
+        ttsIgnoreUntil: 0,
+        completedPhrases: 0,
+        totalAttempts: 0,
+        lastFinalResultIdx: -1,
+        lastInterimText: '',
+        isCompleting: false
+    };
+
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const logs = [];
+
+    // --debug instrumentation interface
+    window.__debug = { events: [], logs: logs, log: log };
+    function __debugEvent(type, data) {
+        window.__debug.events.push({ type: type, time: Date.now(), data: data || {} });
+        if (window.__debug.events.length > 2000) window.__debug.events.shift();
+    }
+
+    function normalizeText(text) {
+        return text.toLowerCase().replace(/ё/g, 'е').replace(/[^а-яa-z\s]/g, '').trim();
+    }
+
+    function splitIntoSyllables(word) {
+        const vowels = 'аеёиоуыэюя';
+        const word_lower = word.toLowerCase();
+        const syllables = [];
+        let current = '';
+
+        for (let i = 0; i < word_lower.length; i++) {
+            current += word[i];
+            if (vowels.includes(word_lower[i])) {
+                let nextConsonants = '';
+                let j = i + 1;
+                while (j < word_lower.length && !vowels.includes(word_lower[j])) {
+                    nextConsonants += word_lower[j];
+                    j++;
+                }
+                if (j < word_lower.length || j === word_lower.length) {
+                    if (nextConsonants.length > 1 && j < word_lower.length) {
+                        const lastChar = nextConsonants[nextConsonants.length - 1];
+                        if (lastChar === 'ь' || lastChar === 'ъ') {
+                            current += nextConsonants;
+                            i += nextConsonants.length;
+                        } else {
+                            current += nextConsonants.slice(0, -1);
+                            i += nextConsonants.length - 1;
+                            if (current) syllables.push(current);
+                            current = '';
+                        }
+                    } else {
+                        current += nextConsonants;
+                        i += nextConsonants.length;
+                    }
+                    if (i === word.length - 1 || j === word.length) {
+                        if (current) syllables.push(current);
+                        current = '';
+                    }
+                }
+            }
+        }
+        if (current) syllables.push(current);
+        return syllables.length > 0 ? syllables : [word];
+    }
+
+    function buildPhraseData(phrase) {
+        const words = phrase.split(/\s+/);
+        const data = { original: phrase, words: [], totalLetters: 0 };
+        let globalLetterIdx = 0;
+
+        words.forEach((wordText, wordIdx) => {
+            const syllables = splitIntoSyllables(wordText);
+            const wordData = { text: wordText, letters: [] };
+
+            syllables.forEach((syllableText, syllIdx) => {
+                for (let i = 0; i < syllableText.length; i++) {
+                    wordData.letters.push({
+                        char: syllableText[i],
+                        globalIdx: globalLetterIdx++,
+                        syllableIdx: syllIdx,
+                        isLastInSyllable: (i === syllableText.length - 1),
+                        isLastInWord: (syllIdx === syllables.length - 1 && i === syllableText.length - 1)
+                    });
+                }
+            });
+            data.words.push(wordData);
+        });
+
+        data.totalLetters = globalLetterIdx;
+        return data;
+    }
+
+    function renderPhrase() {
+        const container = document.getElementById('phrase-display');
+        container.innerHTML = '';
+        const data = state.phraseData;
+
+        data.words.forEach((word) => {
+            const row = document.createElement('div');
+            row.className = 'word-row';
+
+            word.letters.forEach((letter) => {
+                const span = document.createElement('span');
+                span.className = 'letter';
+                span.textContent = letter.char;
+                span.dataset.globalIdx = letter.globalIdx;
+
+                if (state.spokenIndices.has(letter.globalIdx)) {
+                    span.classList.add('spoken');
+                } else {
+                    span.classList.add('pending');
+                }
+                row.appendChild(span);
+
+                if (letter.isLastInSyllable && !letter.isLastInWord) {
+                    const sep = document.createElement('span');
+                    sep.className = 'syllable-separator';
+                    sep.textContent = '●';
+                    row.appendChild(sep);
+                }
+            });
+
+            container.appendChild(row);
+        });
+
+        highlightCurrent();
+    }
+
+    function highlightCurrent() {
+        const data = state.phraseData;
+        for (let i = 0; i < data.totalLetters; i++) {
+            if (!state.spokenIndices.has(i)) {
+                const el = document.querySelector(`.letter[data-global-idx="${i}"]`);
+                if (el) el.classList.add('current');
+                break;
+            }
+        }
+    }
+
+    function normalizeLetterPronunciation(text) {
+        const normalized = text.toLowerCase().replace(/ё/g, 'е').trim();
+        for (const letter in LETTER_PRONUNCIATION_MAP) {
+            if (LETTER_PRONUNCIATION_MAP[letter].includes(normalized)) {
+                return letter;
+            }
+        }
+        return null;
+    }
+
+    function getRecognizedChars(normalizedInput) {
+        const parts = normalizedInput.split(/\s+/).filter(p => p.length > 0);
+        const chars = [];
+        for (const part of parts) {
+            const mapped = normalizeLetterPronunciation(part);
+            if (mapped) {
+                chars.push(mapped);
+            } else {
+                for (let i = 0; i < part.length; i++) {
+                    chars.push(part[i]);
+                }
+            }
+        }
+        return chars;
+    }
+
+    function markAsSpoken(text) {
+        const normalizedInput = normalizeText(text);
+        const data = state.phraseData;
+        let marked = false;
+
+        log(`Попытка сопоставить: "${text}" (норм: "${normalizedInput}")`, 'debug');
+
+        const fullPhraseNorm = normalizeText(data.original);
+        if (normalizedInput === fullPhraseNorm) {
+            log(`  ✓ Распознана вся фраза целиком`, 'ok');
+            for (let i = 0; i < data.totalLetters; i++) state.spokenIndices.add(i);
+            renderPhrase();
+            checkCompletion();
+            return true;
+        }
+
+        const allLetters = data.words.flatMap(w => w.letters.map(l => l.char.toLowerCase()));
+        let alreadySpokenStr = "";
+        let currentIdx = -1;
+
+        for (let i = 0; i < data.totalLetters; i++) {
+            if (state.spokenIndices.has(i)) {
+                alreadySpokenStr += allLetters[i];
+            } else {
+                if (currentIdx === -1) currentIdx = i;
+            }
+        }
+
+        if (currentIdx === -1) return true;
+
+        const remainingTarget = allLetters.slice(currentIdx);
+        const recognizedChars = getRecognizedChars(normalizedInput);
+
+        log(`  Уже прочитано: "${alreadySpokenStr}"`, 'debug');
+        log(`  Ожидается (остаток): "${remainingTarget.join('')}"`, 'debug');
+        log(`  Распознано: [${recognizedChars.join(', ')}]`, 'debug');
+
+        let bestMatchCount = 0;
+
+        // ИСПРАВЛЕНИЕ: Алгоритм "Валидного эха".
+        // Мы разрешаем отбросить начало распознанной строки (префикс), ТОЛЬКО если этот префикс
+        // совпадает с уже прочитанным текстом. Это предотвращает "перепрыгивание" букв,
+        // но позволяет ребенку повторять слоги (например, сказать "до", когда уже прочитано "д").
+        // Если ещё не прочитано ни одной буквы — разрешаем любой префикс (игра может эхо
+        // собственной озвучки типа "попробуй прочитать" попасть в STT).
+        for (let k = 0; k <= recognizedChars.length; k++) {
+            const prefix = recognizedChars.slice(0, k);
+            const suffix = recognizedChars.slice(k);
+
+            let isPrefixValid = false;
+            if (k === 0 || alreadySpokenStr.length === 0) {
+                isPrefixValid = true;
+            } else {
+                const prefixStr = prefix.join('');
+                if (alreadySpokenStr.endsWith(prefixStr)) {
+                    isPrefixValid = true;
+                }
+            }
+
+            if (isPrefixValid) {
+                let currentMatch = 0;
+                while (currentMatch < suffix.length &&
+                currentMatch < remainingTarget.length &&
+                suffix[currentMatch] === remainingTarget[currentMatch]) {
+                    currentMatch++;
+                }
+
+                if (currentMatch > bestMatchCount) {
+                    bestMatchCount = currentMatch;
+                }
+            }
+        }
+
+        if (bestMatchCount > 0) {
+            log(`  ✓ Найдено совпадение: ${bestMatchCount} символ(ов) с учетом эха`, 'ok');
+            for (let i = 0; i < bestMatchCount; i++) {
+                state.spokenIndices.add(currentIdx + i);
+            }
+            marked = true;
+        } else {
+            log(`  ✗ Нет валидного совпадения (перепрыгивание букв запрещено)`, 'warn');
+        }
+
+        if (marked) {
+            renderPhrase();
+            checkCompletion();
+        }
+
+        return marked;
+    }
+
+    function checkCompletion() {
+        if (state.isCompleting) return;
+        const data = state.phraseData;
+        if (state.spokenIndices.size >= data.totalLetters) {
+            state.isCompleting = true;
+            setTimeout(() => {
+                handlePhraseComplete();
+            }, 300);
+        }
+    }
+
+    function handlePhraseComplete() {
+        state.completedPhrases++;
+        __debugEvent('game.phraseComplete', { phraseIdx: state.phraseIdx, phrase: state.phraseData ? state.phraseData.original : '' });
+        speak('Молодец! Отлично!', function() {
+            setTimeout(function() {
+                if (state.phraseIdx < PHRASES.length - 1) {
+                    state.phraseIdx++;
+                    loadPhrase();
+                } else {
+                    showWin();
+                }
+            }, 800);
+        });
+    }
+
+    function loadPhrase() {
+        state.spokenIndices.clear();
+        state.isCompleting = false;
+        state.totalAttempts = 0;
+
+        const phrase = PHRASES[state.phraseIdx];
+        state.phraseData = buildPhraseData(phrase);
+
+        log(`🎯 Целевая фраза: "${phrase}"`, 'info');
+
+        document.getElementById('phrase-counter').textContent = 'Фраза ' + (state.phraseIdx + 1) + ' из ' + PHRASES.length;
+        const progress = (state.phraseIdx / PHRASES.length) * 100;
+        document.getElementById('progress-fill').style.width = progress + '%';
+
+        renderPhrase();
+
+        __debugEvent('game.phraseLoaded', { phrase: phrase, phraseIdx: state.phraseIdx, totalLetters: state.phraseData.totalLetters });
+        setTimeout(function() {
+            speak('Попробуй прочитать!', function() {
+                __debugEvent('game.promptDone', { phraseIdx: state.phraseIdx });
+                ensureListening();
+            });
+        }, 300);
+    }
+
+    function skipPhrase() {
+        if (state.phraseIdx < PHRASES.length - 1) {
+            state.phraseIdx++;
+            loadPhrase();
+        } else {
+            showWin();
+        }
+    }
+
+    document.addEventListener('visibilitychange', function() {
+        state.isPageVisible = !document.hidden;
+        if (document.hidden) {
+            if (state.recognition && state.sttListening) {
+                try { state.recognition.stop(); } catch(e) {}
+                state.sttListening = false;
+            }
+        } else {
+            if (state.recognition && !state.sttListening && !state.isTTSPlaying && !state.gameOver) {
+                setTimeout(function() { ensureListening(); }, 300);
+            }
+        }
+    });
+
+    function toggleLogs() { document.getElementById('log-panel').classList.toggle('expanded'); }
+
+    function log(msg, type) {
+        type = type || 'info';
+        const panel = document.getElementById('log-content');
+        const line = document.createElement('div');
+        line.className = 'log-line';
+        const time = new Date().toLocaleTimeString('ru-RU', {hour12:false});
+        const ms = String(new Date().getMilliseconds()).padStart(3,'0');
+        let prefix = '';
+        if (type === 'ok') prefix = '✅';
+        else if (type === 'err') prefix = '❌';
+        else if (type === 'warn') prefix = '⚠️';
+        else if (type === 'stt') prefix = '🗣';
+        else if (type === 'tts') prefix = '🔊';
+        else if (type === 'filter') prefix = '🚫';
+        else if (type === 'watchdog') prefix = '🐕';
+        else if (type === 'debug') prefix = '🔍';
+        else prefix = 'ℹ️';
+
+        logs.push('[' + time + '.' + ms + '] ' + prefix + ' ' + msg);
+        line.innerHTML = '<span class="log-time">[' + time + '.' + ms + ']</span><span class="log-' + type + '">' + prefix + ' ' + msg + '</span>';
+        panel.appendChild(line);
+        panel.scrollTop = panel.scrollHeight;
+        document.getElementById('log-count').textContent = '(' + logs.length + ')';
+    }
+
+    function copyLogs() {
+        if (logs.length === 0) return;
+        const extra = '\n=== СИСТЕМА ===\nVersion: ' + VERSION + '\nURL: ' + location.href + '\nUser Agent: ' + navigator.userAgent + '\nOnline: ' + navigator.onLine + '\n=== КОНЕЦ ===';
+        const text = logs.join('\n') + extra;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function() {
+                showToast('📋 Скопировано');
+            }).catch(function() {
+                fallbackCopy(text);
+            });
+        } else {
+            fallbackCopy(text);
+        }
+    }
+
+    function fallbackCopy(text) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+            document.execCommand('copy');
+            showToast('📋 Скопировано');
+        } catch(e) {
+            showToast('Ошибка копирования');
+        }
+        document.body.removeChild(ta);
+    }
+
+    function showToast(msg) {
+        const toast = document.createElement('div');
+        toast.style.cssText = 'position:fixed;bottom:50px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:white;padding:10px 20px;border-radius:20px;font-size:13px;z-index:200;';
+        toast.textContent = msg;
+        document.body.appendChild(toast);
+        setTimeout(function() { toast.remove(); }, 2000);
+    }
+
+    async function runDiagnostics() {
+        logs.length = 0;
+        document.getElementById('log-content').innerHTML = '';
+        document.getElementById('log-count').textContent = '(0)';
+
+        const btn = document.getElementById('action-btn');
+        const hint = document.getElementById('diag-hint');
+        const manualBtn = document.getElementById('manual-btn');
+
+        document.getElementById('diag-list').classList.add('active');
+        btn.className = 'state-checking';
+        btn.textContent = 'Проверка...';
+        btn.disabled = true;
+        document.getElementById('log-panel').classList.add('expanded');
+        log('=== ДИАГНОСТИКА v' + VERSION + ' ===', 'info');
+
+        if (!SR) {
+            setDiag('d-api', false);
+            showFail(btn, hint, 'Браузер не поддерживает STT.');
+            manualBtn.style.display = 'block';
+            return;
+        }
+        setDiag('d-api', true);
+
+        const isSecure = window.isSecureContext || location.protocol === 'https:';
+        if (!isSecure) {
+            setDiag('d-secure', false);
+            showFail(btn, hint, 'Нужен HTTPS!');
+            manualBtn.style.display = 'block';
+            return;
+        }
+        setDiag('d-secure', true);
+
+        setChecking('d-mic');
+        try {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('mediaDevices недоступен');
+            log('mediaDevices OK', 'ok');
+            setDiag('d-mic', true);
+        } catch (e) {
+            setDiag('d-mic', false);
+            showFail(btn, hint, 'Микрофон недоступен');
+            manualBtn.style.display = 'block';
+            return;
+        }
+
+        setChecking('d-stt');
+        hint.textContent = '🗣 Скажите что-нибудь...';
+        log('=== ТЕСТ STT ===', 'info');
+
+        const testRec = new SR();
+        testRec.lang = 'ru-RU';
+        testRec.interimResults = false;
+        testRec.maxAlternatives = 3;
+        testRec.continuous = false;
+        let sttOk = false;
+        let testTimer = null;
+
+        testRec.onstart = function() {
+            log('STT: onstart', 'stt');
+            testTimer = setTimeout(function() {
+                if (!sttOk) { log('STT: TIMEOUT 8s', 'warn'); testRec.stop(); }
+            }, 8000);
+        };
+        testRec.onresult = function(e) {
+            sttOk = true;
+            clearTimeout(testTimer);
+            const r = e.results[0][0];
+            log('STT: "' + r.transcript + '" (' + (r.confidence*100).toFixed(0) + '%)', 'ok');
+            testRec.stop();
+        };
+        testRec.onerror = function(e) { log('STT: ERROR ' + e.error, 'err'); };
+        testRec.onend = function() {
+            log('STT: onend (ok=' + sttOk + ')', sttOk ? 'ok' : 'warn');
+            clearTimeout(testTimer);
+            if (sttOk) {
+                setDiag('d-stt', true);
+                hint.textContent = '✅ Запуск...';
+                setTimeout(function() { startGame(false); }, 800);
+            } else {
+                setDiag('d-stt', false);
+                showFail(btn, hint, 'STT не сработал. Говорите громче.');
+                manualBtn.style.display = 'block';
+            }
+        };
+        try {
+            testRec.start();
+            log('testRec.start() OK', 'ok');
+        } catch(e) {
+            log('start(): ' + e.message, 'err');
+            setDiag('d-stt', false);
+            showFail(btn, hint, 'STT: ' + e.message);
+            manualBtn.style.display = 'block';
+        }
+    }
+
+    function setDiag(id, ok) {
+        const el = document.getElementById(id);
+        el.classList.remove('checking');
+        el.classList.add(ok ? 'ok' : 'fail');
+    }
+
+    function setChecking(id) {
+        document.getElementById(id).classList.add('checking');
+    }
+
+    function showFail(btn, hint, msg) {
+        btn.className = 'state-error';
+        btn.textContent = '🔄 Ещё раз';
+        btn.disabled = false;
+        hint.textContent = msg;
+    }
+
+    function startGame(manualMode) {
+        state.phraseIdx = 0;
+        state.completedPhrases = 0;
+        state.totalAttempts = 0;
+        state.useManualInput = manualMode;
+        state.isTTSPlaying = false;
+        state.ttsHistory = [];
+        state.sttListening = false;
+        state.gameOver = false;
+        state.lastSTTActivity = Date.now();
+        state.isResetting = false;
+        state.isCompleting = false;
+        state.ttsIgnoreUntil = 0;
+
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('game-screen').classList.remove('hidden');
+        document.getElementById('log-panel').classList.remove('expanded');
+        document.getElementById('mic-reset-btn').classList.remove('show');
+
+        if (manualMode) {
+            document.getElementById('voice-indicators').style.display = 'none';
+            log('=== ИГРА (ручной режим) ===', 'ok');
+        } else {
+            document.getElementById('voice-indicators').style.display = 'flex';
+            initRecognition();
+            startSTTWatchdog();
+            log('=== ИГРА ===', 'ok');
+        }
+
+        loadPhrase();
+    }
+
+    function startSTTWatchdog() {
+        if (state.watchdogTimer) clearInterval(state.watchdogTimer);
+        state.watchdogTimer = setInterval(function() {
+            if (state.useManualInput || !state.recognition || !state.isPageVisible || state.gameOver || state.isResetting || state.isTTSPlaying) return;
+            if (!state.sttListening) {
+                ensureListening();
+            } else if (Date.now() - state.lastSTTActivity > 5000) {
+                log('STT: завис — рестарт', 'warn');
+                try { state.recognition.stop(); } catch(e) {}
+                state.sttListening = false;
+                ensureListening();
+            }
+        }, 1000);
+    }
+
+    function ensureListening() {
+        if (!state.recognition || state.sttListening) return;
+        if (state.isTTSPlaying || !state.isPageVisible || state.gameOver) return;
+
+        try {
+            state.recognition.start();
+            state.sttListening = true;
+            state.lastSTTActivity = Date.now();
+            log('▶ STT запущен', 'ok');
+        } catch(e) {
+            if (e.message && e.message.includes('already started')) {
+                state.sttListening = true;
+            } else {
+                log('ensureListening: ' + (e.message || e), 'err');
+                hardResetSTT();
+            }
+        }
+    }
+
+    function hardResetSTT() {
+        if (state.isResetting) return;
+        state.isResetting = true;
+        log('🔄 HARD RESET STT', 'warn');
+        state.sttListening = false;
+
+        if (state.recognition) {
+            try { state.recognition.stop(); } catch(e) {}
+            try { state.recognition.abort(); } catch(e) {}
+        }
+
+        setTimeout(function() {
+            state.recognition = new SR();
+            state.lastFinalResultIdx = -1;
+            state.recognition.lang = 'ru-RU';
+            state.recognition.continuous = true;
+            state.recognition.interimResults = true;
+            state.recognition.maxAlternatives = 3;
+
+            state.recognition.onstart = function() {
+                state.sttListening = true;
+                state.lastSTTActivity = Date.now();
+                state.isResetting = false;
+                if (state.isPageVisible && !state.isTTSPlaying && Date.now() >= state.ttsIgnoreUntil) {
+                    document.getElementById('mic-icon').classList.add('recording');
+                }
+                document.getElementById('mic-reset-btn').classList.remove('show');
+                log('STT: onstart (after reset)', 'stt');
+                __debugEvent('stt.onstart', { fromReset: true });
+            };
+            state.recognition.onresult = function(e) {
+                const ignored = Date.now() < state.ttsIgnoreUntil;
+                const lastResult = e.results[e.results.length - 1];
+                const text = lastResult ? lastResult[0].transcript.toLowerCase().trim() : '';
+                const confidence = lastResult ? lastResult[0].confidence : 0;
+                __debugEvent('stt.onresult', { text: text, isFinal: lastResult ? lastResult.isFinal : false, confidence: confidence, ignored: ignored, resultIndex: e.resultIndex, fromReset: true });
+                if (state.isTTSPlaying || !state.isPageVisible || state.gameOver) return;
+                if (Date.now() < state.ttsIgnoreUntil) return;
+                state.lastSTTActivity = Date.now();
+                log(`STT raw: "${text}" (isFinal: ${lastResult ? lastResult.isFinal : '?'})`, 'stt');
+                if (text.length < 1) return;
+                document.getElementById('mic-icon').classList.add('recording');
+                for (let i = e.results.length - 1; i > state.lastFinalResultIdx; i--) {
+                    if (e.results[i].isFinal) {
+                        const t = e.results[i][0].transcript.toLowerCase().trim();
+                        if (t.length > 0) { const c = stripTTSEcho(t); if (c.length > 0) checkReading(c); }
+                        state.lastFinalResultIdx = i;
+                        break;
+                    }
+                }
+                // Chrome STT часто не финализирует короткие фразы —
+                // засчитываем последний промежуточный результат, если он новый
+                if (state.lastFinalResultIdx < e.results.length - 1 && !state.isTTSPlaying) {
+                    const last = e.results[e.results.length - 1];
+                    if (last && !last.isFinal) {
+                        const t = last[0].transcript.toLowerCase().trim();
+                        if (t.length > 0) {
+                            const c = stripTTSEcho(t);
+                            if (c.length > 0 && c !== state.lastInterimText) {
+                                checkReading(c);
+                                state.lastInterimText = c;
+                            }
+                        }
+                    }
+                }
+            };
+            state.recognition.onerror = function(e) {
+                __debugEvent('stt.onerror', { error: e.error, message: e.message || '', fromReset: true });
+                if (!state.isPageVisible || (state.isResetting && e.error === 'aborted')) return;
+                log('STT ошибка: ' + e.error, 'err');
+                if (e.error === 'no-speech' || e.error === 'aborted') {
+                    state.sttListening = false;
+                    setTimeout(function() { ensureListening(); }, 300);
+                } else if (e.error === 'network') {
+                    state.sttListening = false;
+                    setTimeout(function() { ensureListening(); }, 1000);
+                }
+            };
+            state.recognition.onend = function() {
+                state.sttListening = false;
+                state.lastFinalResultIdx = -1;
+                __debugEvent('stt.onend', { wasPlaying: state.isTTSPlaying, fromReset: true });
+                if (!state.isTTSPlaying) {
+                    document.getElementById('mic-icon').classList.remove('recording');
+                }
+                log('STT: onend', 'stt');
+                if (state.isPageVisible && !state.isTTSPlaying && !state.gameOver && !state.isResetting) {
+                    setTimeout(function() { ensureListening(); }, 300);
+                }
+            };
+            
+            try {
+                state.recognition.start();
+                state.sttListening = true;
+                state.lastSTTActivity = Date.now();
+                log('✅ STT перезапущен', 'ok');
+            } catch(e) {
+                log('Reset start failed: ' + (e.message || e), 'err');
+                state.isResetting = false;
+            }
+        }, 500);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // ХРОНИКИ STT-ВОЙН (уроки, выстраданные через Playwright)
+    // ═══════════════════════════════════════════════════════════
+    //
+    // 1. Chrome STT (webkitSpeechRecognition) с continuous: true
+    //    молча виснет после обработки эха собственного TTS.
+    //    onresult просто перестаёт приходить — без onerror/onend.
+    //    → watchdog с рестартом по lastSTTActivity > 5s.
+    //
+    // 2. После recognition.stop() + start() наступает мёртвая
+    //    зона ~2s — аудио в этот период Chrome игнорирует.
+    //
+    // 3. speechSynthesis.cancel() НЕ трогает STT, но в Windows
+    //    может переключать аудиодрайвер и глушить микрофон
+    //    на 1-2 сэмпла. Достаточно, чтобы STT потерял синхронизацию.
+    //
+    // 4. speak() → cancel() триггерит onerror на текущей фразе,
+    //    и onerror вызывает тот же callback, что и onend.
+    //    Если колбэк делает phraseIdx++ — будет двойной инкремент.
+    //    → isCompleting guard в checkCompletion().
+    //
+    // 5. Эхо: TTS "Молодец! Отлично!" → STT слышит это обратно
+    //    → stripTTSEcho() вырезает известные TTS-фразы.
+    //    Без этого любое слово из TTS (например "мама") замкнёт
+    //    цикл и перескочит через фразу.
+    //
+    // 6. Chrome STT не финализирует короткие фразы (1-2 слога).
+    //    isFinal остаётся false навсегда.
+    //    → засчитываем последний промежуточный результат.
+    //    Риск: ложное срабатывание на недослушанном слове.
+    //
+    // 7. После recognition.start() Chrome сбрасывает индексы
+    //    результатов в 0. lastFinalResultIdx = -1 обязателен
+    //    в onend, иначе onresult пропустит все новые данные.
+    //
+    // 8. speechSynthesis.speak() требует пользовательского жеста.
+    //    Transient activation живет только до конца обработчика
+    //    события. Из page.evaluate() speak не сработает —
+    //    нужен OS-level TTS (PowerShell System.Speech).
+    //
+    // 9. STT хранит все результаты в e.results[] — массив растёт
+    //    бесконечно с continuous: true. При длительной игре
+    //    может просесть память (единичные случаи, не критично).
+    //
+    // 10. splitIntoSyllables() дублировал последнюю согласную
+    //     из группы: "солнце" → "солнцце" (7 букв вместо 6).
+    //     Фикс: current = '' после push слога.
+    //
+    // 11. getRecognizedChars() → normalizeLetterPronunciation()
+    //     ищет полное совпадение part в LETTER_PRONUNCIATION_MAP.
+    //     Если слог "па" не найден — разбивает на буквы ['п','а'].
+    //     Это ок для тестов, но syllable-ввод не работает.
+    //
+    // 12. Тесты стратегий чтения (слоги, эхо, ошибки) пишем
+    //     через injectSTT + manual mode — это проверяет алго-
+    //     ритм, а не аудиотракт. Аудиотракт тестируется отдельно
+    //     debug-audio.spec.ts с PowerShell TTS.
+    // ═══════════════════════════════════════════════════════════
+
+    function initRecognition() {
+        state.recognition = new SR();
+        state.recognition.lang = 'ru-RU';
+        state.recognition.continuous = true;
+        state.recognition.interimResults = true;
+        state.recognition.maxAlternatives = 3;
+
+        state.recognition.onstart = function() {
+            state.sttListening = true;
+            state.lastSTTActivity = Date.now();
+            state.isResetting = false;
+            if (state.isPageVisible && !state.isTTSPlaying && Date.now() >= state.ttsIgnoreUntil) {
+                document.getElementById('mic-icon').classList.add('recording');
+            }
+            document.getElementById('mic-reset-btn').classList.remove('show');
+            log('STT: onstart', 'stt');
+            __debugEvent('stt.onstart', {});
+        };
+        state.recognition.onresult = function(e) {
+            const ignored = Date.now() < state.ttsIgnoreUntil;
+            const lastResult = e.results[e.results.length - 1];
+            const text = lastResult ? lastResult[0].transcript.toLowerCase().trim() : '';
+            const confidence = lastResult ? lastResult[0].confidence : 0;
+            __debugEvent('stt.onresult', { text: text, isFinal: lastResult ? lastResult.isFinal : false, confidence: confidence, ignored: ignored, resultIndex: e.resultIndex });
+            if (state.isTTSPlaying || !state.isPageVisible || state.gameOver) return;
+            if (Date.now() < state.ttsIgnoreUntil) return;
+            state.lastSTTActivity = Date.now();
+            log(`STT raw: "${text}" (isFinal: ${lastResult ? lastResult.isFinal : '?'})`, 'stt');
+            if (text.length < 1) return;
+            for (let i = e.results.length - 1; i > state.lastFinalResultIdx; i--) {
+                if (e.results[i].isFinal) {
+                    const t = e.results[i][0].transcript.toLowerCase().trim();
+                    if (t.length > 0) { const c = stripTTSEcho(t); if (c.length > 0) checkReading(c); }
+                    state.lastFinalResultIdx = i;
+                    break;
+                }
+            }
+            // Chrome STT часто не финализирует короткие фразы —
+            // засчитываем последний промежуточный результат, если он новый
+            if (state.lastFinalResultIdx < e.results.length - 1 && !state.isTTSPlaying) {
+                const last = e.results[e.results.length - 1];
+                if (last && !last.isFinal) {
+                    const t = last[0].transcript.toLowerCase().trim();
+                    if (t.length > 0) {
+                        const c = stripTTSEcho(t);
+                        if (c.length > 0 && c !== state.lastInterimText) {
+                            checkReading(c);
+                            state.lastInterimText = c;
+                        }
+                    }
+                }
+            }
+        };
+        state.recognition.onerror = function(e) {
+            __debugEvent('stt.onerror', { error: e.error, message: e.message || '' });
+            if (!state.isPageVisible || (state.isResetting && e.error === 'aborted')) return;
+            log('STT ошибка: ' + e.error, 'err');
+            if (e.error === 'no-speech' || e.error === 'aborted') {
+                state.sttListening = false;
+                setTimeout(function() { ensureListening(); }, 300);
+            } else if (e.error === 'network') {
+                state.sttListening = false;
+                setTimeout(function() { ensureListening(); }, 1000);
+            }
+        };
+        state.recognition.onend = function() {
+            state.sttListening = false;
+            state.lastFinalResultIdx = -1;
+            __debugEvent('stt.onend', { wasPlaying: state.isTTSPlaying });
+            if (!state.isTTSPlaying) {
+                document.getElementById('mic-icon').classList.remove('recording');
+            }
+            log('STT: onend', 'stt');
+            if (state.isPageVisible && !state.isTTSPlaying && !state.gameOver && !state.isResetting) {
+                setTimeout(function() { ensureListening(); }, 300);
+            }
+        };
+        try {
+            state.recognition.start();
+            log('STT инициализирован', 'stt');
+        } catch(e) {
+            log('start: ' + (e.message || e), 'err');
+        }
+    }
+
+    function stripTTSEcho(text) {
+        let result = text.toLowerCase().replace(/[^a-zа-яё\s]/g, '').trim();
+        let strippedSomething = false;
+        for (const entry of state.ttsHistory) {
+            const tts = entry.text.toLowerCase().replace(/[^a-zа-яё\s]/g, '').trim();
+            if (tts.length > 0) {
+                const before = result;
+                result = result.replace(tts, '');
+                if (result !== before) strippedSomething = true;
+            }
+        }
+        result = result.replace(/\s+/g, ' ').trim();
+        if (strippedSomething && result.length > 0) {
+            __debugEvent('game.echoStripped', { original: text.toLowerCase(), cleaned: result });
+        }
+        return result;
+    }
+
+    function checkReading(text) {
+        state.totalAttempts++;
+        log(`Проверка произношения: "${text}"`, 'info');
+        const marked = markAsSpoken(text);
+        __debugEvent('game.checkReading', { text: text, marked: marked, totalAttempts: state.totalAttempts });
+
+        if (!marked) {
+            if (state.totalAttempts > 5) {
+                speak('Попробуй ещё раз', function() {});
+                state.totalAttempts = 0;
+            }
+        }
+    }
+
+    function speak(text, callback) {
+        if (!('speechSynthesis' in window)) {
+            if (callback) callback();
+            return;
+        }
+
+        speechSynthesis.cancel();
+
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'ru-RU';
+        u.rate = 0.85;
+
+        state.isTTSPlaying = true;
+        state.ttsHistory.push({ text: text, time: Date.now() });
+        if (state.ttsHistory.length > 5) state.ttsHistory.shift();
+
+        document.getElementById('mic-icon').classList.add('speaking');
+        document.getElementById('mic-icon').classList.remove('recording');
+
+        log('TTS: "' + text + '"', 'tts');
+
+        u.onend = function() {
+            state.isTTSPlaying = false;
+            state.ttsIgnoreUntil = Date.now() + 500;
+            document.getElementById('mic-icon').classList.remove('speaking');
+            setTimeout(function() {
+                if (state.sttListening && !state.isTTSPlaying && state.isPageVisible) {
+                    document.getElementById('mic-icon').classList.add('recording');
+                }
+            }, 600);
+            log('TTS: конец', 'filter');
+            if (callback) callback();
+        };
+        u.onerror = function() {
+            state.isTTSPlaying = false;
+            state.ttsIgnoreUntil = Date.now() + 500;
+            document.getElementById('mic-icon').classList.remove('speaking');
+            setTimeout(function() {
+                if (state.sttListening && !state.isTTSPlaying && state.isPageVisible) {
+                    document.getElementById('mic-icon').classList.add('recording');
+                }
+            }, 600);
+            if (callback) callback();
+        };
+
+        speechSynthesis.speak(u);
+    }
+
+    function showWin() {
+        state.gameOver = true;
+        __debugEvent('game.win', { completedPhrases: state.completedPhrases });
+        document.getElementById('game-screen').classList.add('hidden');
+        document.getElementById('win-screen').classList.remove('hidden');
+        if (state.recognition) {
+            try { state.recognition.stop(); } catch(e) {}
+        }
+        if (state.watchdogTimer) {
+            clearInterval(state.watchdogTimer);
+        }
+
+        const statsEl = document.getElementById('stats');
+        statsEl.innerHTML = '<div class="stats-title">📊 Статистика:</div>' +
+            '<div class="stat-row"><span>Прочитано фраз:</span><span>' + state.completedPhrases + '</span></div>' +
+            '<div class="stat-row"><span>Всего попыток:</span><span>' + state.totalAttempts + '</span></div>';
+
+        const winPhrase = 'Поздравляю! Ты отлично читаешь!';
+
+        speak(winPhrase, function() {
+            log('=== ПОБЕДА! ===', 'ok');
+            const emojis = ['📖', '⭐', '🎉', '✨', '🌟'];
+            for(let i = 0; i < 30; i++) {
+                const el = document.createElement('div');
+                el.className = 'emoji-rain';
+                el.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+                el.style.left = Math.random() * 100 + 'vw';
+                el.style.top = '-50px';
+                el.style.animationDuration = (2 + Math.random() * 2) + 's';
+                el.style.animationDelay = Math.random() + 's';
+                document.body.appendChild(el);
+            }
+        });
+    }
+
+    // --debug helpers
+    window.__debug.getLog = function() { return window.__debug.events; };
+    window.__debug.getState = function() {
+        return {
+            phraseIdx: state.phraseIdx,
+            phrase: state.phraseData ? state.phraseData.original : null,
+            totalLetters: state.phraseData ? state.phraseData.totalLetters : 0,
+            spokenCount: state.spokenIndices.size,
+            spokenIndices: [...state.spokenIndices].sort(function(a,b){return a-b;}),
+            gameOver: state.gameOver,
+            isTTSPlaying: state.isTTSPlaying,
+            sttListening: state.sttListening,
+            completedPhrases: state.completedPhrases,
+            totalAttempts: state.totalAttempts,
+            ttsIgnoreUntil: state.ttsIgnoreUntil,
+            isResetting: state.isResetting,
+            ttsHistoryLen: state.ttsHistory.length
+        };
+    };
+    window.__debug.clearLog = function() { window.__debug.events = []; };
+    window.__debug.snapshot = function() { return { state: window.__debug.getState(), log: window.__debug.getLog().slice(-50) }; };
+    window.__debug.resetSTT = function() { hardResetSTT(); };
+    window.__debug.forceFinalize = function() {
+        if (state.recognition && state.sttListening) {
+            log('⏹ Принудительная финализация STT', 'warn');
+            state.recognition.stop();
+        }
+    };
+    window.__debug.injectSTT = function(text) {
+        log(`[INJECT] STT: "${text}"`, 'stt');
+        const c = stripTTSEcho(text);
+        if (c.length > 0) checkReading(c);
+        return c.length > 0;
+    };
+    window.__debug.resetSpokenIndices = function() {
+        state.spokenIndices.clear();
+        state.isCompleting = false;
+        state.totalAttempts = 0;
+        log('🔄 Сброшены отметки прочитанных букв', 'warn');
+    };
+    window.__debug.forcePhrase = function(n) {
+        if (n >= 0 && n < PHRASES.length) {
+            speechSynthesis.cancel();
+            state.phraseIdx = n;
+            loadPhrase();
+            log(`🔄 Принудительный переход к фразе ${n} («${PHRASES[n]}»)`, 'warn');
+        }
+    };
+    window.__debug.resetGame = function() {
+        speechSynthesis.cancel();
+        if (state.recognition) {
+            try { state.recognition.abort(); } catch(e) {}
+            state.recognition = null;
+        }
+        if (state.watchdogTimer) { clearInterval(state.watchdogTimer); state.watchdogTimer = null; }
+        state.phraseIdx = 0;
+        state.completedPhrases = 0;
+        state.totalAttempts = 0;
+        state.spokenIndices.clear();
+        state.ttsHistory = [];
+        state.sttListening = false;
+        state.gameOver = false;
+        state.isTTSPlaying = false;
+        state.isResetting = false;
+        state.isCompleting = false;
+        state.ttsIgnoreUntil = 0;
+        state.lastFinalResultIdx = -1;
+        state.lastInterimText = '';
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('game-screen').classList.remove('hidden');
+        document.getElementById('log-panel').classList.remove('expanded');
+        document.getElementById('mic-reset-btn').classList.remove('show');
+        document.getElementById('voice-indicators').style.display = 'flex';
+        initRecognition();
+        startSTTWatchdog();
+        loadPhrase();
+    };
+
+    log('Готово. Версия ' + VERSION + '. Нажмите "Запустить проверку".', 'info');
+    __debugEvent('init', { version: VERSION });
+</script>
+</body>
+</html>
