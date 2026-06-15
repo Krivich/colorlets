@@ -427,6 +427,8 @@
         watchdogTimer: null,
         gameOver: false,
         lastSTTActivity: 0,
+        sttStartedAt: 0,
+        expectingSTTResult: false,
         isResetting: false,
         ttsIgnoreUntil: 0,
         completedPhrases: 0,
@@ -437,7 +439,7 @@
     };
 
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const logs = [];
+    var logs = [];
 
     // --debug instrumentation interface
     window.__debug = { events: [], logs: logs, log: log };
@@ -608,7 +610,7 @@
             return true;
         }
 
-        const allLetters = data.words.flatMap(w => w.letters.map(l => l.char.toLowerCase()));
+        const allLetters = data.words.flatMap(w => w.letters.map(l => l.char.toLowerCase().replace(/ё/g, 'е')));
         let alreadySpokenStr = "";
         let currentIdx = -1;
 
@@ -973,10 +975,18 @@
             if (state.useManualInput || !state.recognition || !state.isPageVisible || state.gameOver || state.isResetting || state.isTTSPlaying) return;
             if (!state.sttListening) {
                 ensureListening();
-            } else if (Date.now() - state.lastSTTActivity > 5000) {
+            } else if (state.expectingSTTResult && Date.now() - state.ttsIgnoreUntil > 5000) {
+                log('STT: не услышал подсказку — перезапуск', 'warn');
+                __debugEvent('stt.missedPrompt', {});
+                try { state.recognition.stop(); } catch(e) {}
+                state.sttListening = false;
+                state.expectingSTTResult = false;
+                ensureListening();
+            } else if (Date.now() - state.sttStartedAt > 10000 && Date.now() - state.lastSTTActivity > 5000) {
                 log('STT: завис — рестарт', 'warn');
                 try { state.recognition.stop(); } catch(e) {}
                 state.sttListening = false;
+                state.expectingSTTResult = false;
                 ensureListening();
             }
         }, 1000);
@@ -990,6 +1000,7 @@
             state.recognition.start();
             state.sttListening = true;
             state.lastSTTActivity = Date.now();
+            state.sttStartedAt = Date.now();
             log('▶ STT запущен', 'ok');
         } catch(e) {
             if (e.message && e.message.includes('already started')) {
@@ -1073,14 +1084,17 @@
                 log('STT ошибка: ' + e.error, 'err');
                 if (e.error === 'no-speech' || e.error === 'aborted') {
                     state.sttListening = false;
+                    state.expectingSTTResult = false;
                     setTimeout(function() { ensureListening(); }, 300);
                 } else if (e.error === 'network') {
                     state.sttListening = false;
+                    state.expectingSTTResult = false;
                     setTimeout(function() { ensureListening(); }, 1000);
                 }
             };
             state.recognition.onend = function() {
                 state.sttListening = false;
+                state.expectingSTTResult = false;
                 state.lastFinalResultIdx = -1;
                 __debugEvent('stt.onend', { wasPlaying: state.isTTSPlaying, fromReset: true });
                 if (!state.isTTSPlaying) {
@@ -1096,6 +1110,7 @@
                 state.recognition.start();
                 state.sttListening = true;
                 state.lastSTTActivity = Date.now();
+                state.sttStartedAt = Date.now();
                 log('✅ STT перезапущен', 'ok');
             } catch(e) {
                 log('Reset start failed: ' + (e.message || e), 'err');
@@ -1187,9 +1202,13 @@
             const text = lastResult ? lastResult[0].transcript.toLowerCase().trim() : '';
             const confidence = lastResult ? lastResult[0].confidence : 0;
             __debugEvent('stt.onresult', { text: text, isFinal: lastResult ? lastResult.isFinal : false, confidence: confidence, ignored: ignored, resultIndex: e.resultIndex });
+            state.lastSTTActivity = Date.now();
+            if (state.expectingSTTResult) {
+                state.expectingSTTResult = false;
+                log('STT: услышал подсказку', 'ok');
+            }
             if (state.isTTSPlaying || !state.isPageVisible || state.gameOver) return;
             if (Date.now() < state.ttsIgnoreUntil) return;
-            state.lastSTTActivity = Date.now();
             log(`STT raw: "${text}" (isFinal: ${lastResult ? lastResult.isFinal : '?'})`, 'stt');
             if (text.length < 1) return;
             for (let i = e.results.length - 1; i > state.lastFinalResultIdx; i--) {
@@ -1222,14 +1241,17 @@
             log('STT ошибка: ' + e.error, 'err');
             if (e.error === 'no-speech' || e.error === 'aborted') {
                 state.sttListening = false;
+                state.expectingSTTResult = false;
                 setTimeout(function() { ensureListening(); }, 300);
             } else if (e.error === 'network') {
                 state.sttListening = false;
+                state.expectingSTTResult = false;
                 setTimeout(function() { ensureListening(); }, 1000);
             }
         };
         state.recognition.onend = function() {
             state.sttListening = false;
+            state.expectingSTTResult = false;
             state.lastFinalResultIdx = -1;
             __debugEvent('stt.onend', { wasPlaying: state.isTTSPlaying });
             if (!state.isTTSPlaying) {
@@ -1280,7 +1302,7 @@
         }
     }
 
-    function speak(text, callback) {
+    function speak(text, callback, skipHistory) {
         if (!('speechSynthesis' in window)) {
             if (callback) callback();
             return;
@@ -1293,8 +1315,10 @@
         u.rate = 0.85;
 
         state.isTTSPlaying = true;
-        state.ttsHistory.push({ text: text, time: Date.now() });
-        if (state.ttsHistory.length > 5) state.ttsHistory.shift();
+        if (!skipHistory) {
+            state.ttsHistory.push({ text: text, time: Date.now() });
+            if (state.ttsHistory.length > 5) state.ttsHistory.shift();
+        }
 
         document.getElementById('mic-icon').classList.add('speaking');
         document.getElementById('mic-icon').classList.remove('recording');
@@ -1304,6 +1328,9 @@
         u.onend = function() {
             state.isTTSPlaying = false;
             state.ttsIgnoreUntil = Date.now() + 500;
+            if (!skipHistory) {
+                state.expectingSTTResult = true;
+            }
             document.getElementById('mic-icon').classList.remove('speaking');
             setTimeout(function() {
                 if (state.sttListening && !state.isTTSPlaying && state.isPageVisible) {
@@ -1378,6 +1405,7 @@
             completedPhrases: state.completedPhrases,
             totalAttempts: state.totalAttempts,
             ttsIgnoreUntil: state.ttsIgnoreUntil,
+            expectingSTTResult: state.expectingSTTResult,
             isResetting: state.isResetting,
             ttsHistoryLen: state.ttsHistory.length
         };
@@ -1439,6 +1467,43 @@
         initRecognition();
         startSTTWatchdog();
         loadPhrase();
+    };
+
+    window.__debug.speak = function(text) {
+        return new Promise(function(resolve) {
+            log('[TEST TTS] "' + text + '"', 'tts');
+            __debugEvent('test.tts', { text: text });
+            speak(text, function() { resolve(); }, true);
+        });
+    };
+
+    window.__debug.getUnreadText = function() {
+        var data = state.phraseData;
+        if (!data) return '';
+        var words = data.original.replace(/[.!?]+$/, '').split(/\s+/);
+        var allLetters = [];
+        var wordBounds = [];
+        var idx = 0;
+        for (var w = 0; w < words.length; w++) {
+            var wl = words[w].toLowerCase().replace(/ё/g, 'е');
+            wordBounds.push({ start: idx, end: idx + wl.length });
+            for (var c = 0; c < wl.length; c++) {
+                allLetters.push(wl[c]);
+                idx++;
+            }
+        }
+        var spokenSet = {};
+        state.spokenIndices.forEach(function(i) { spokenSet[i] = true; });
+        var unreadWords = [];
+        for (var w = 0; w < wordBounds.length; w++) {
+            var wb = wordBounds[w];
+            var unread = '';
+            for (var i = wb.start; i < wb.end; i++) {
+                if (!spokenSet[i]) unread += allLetters[i];
+            }
+            if (unread.length > 0) unreadWords.push(unread);
+        }
+        return unreadWords.join(' ');
     };
 
     log('Готово. Версия ' + VERSION + '. Нажмите "Запустить проверку".', 'info');
