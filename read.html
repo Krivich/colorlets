@@ -435,7 +435,10 @@
         totalAttempts: 0,
         lastFinalResultIdx: -1,
         lastInterimText: '',
-        isCompleting: false
+        isCompleting: false,
+        sinceResetResults: 0,
+        softResetting: false,
+        softResetCount: 0
     };
 
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -698,8 +701,12 @@
 
     function handlePhraseComplete() {
         state.completedPhrases++;
+        state.sinceResetResults = 0;
         __debugEvent('game.phraseComplete', { phraseIdx: state.phraseIdx, phrase: state.phraseData ? state.phraseData.original : '' });
         speak('Молодец! Отлично!', function() {
+            setTimeout(function() {
+                recognitionSoftReset();
+            }, 200);
             setTimeout(function() {
                 if (state.phraseIdx < PHRASES.length - 1) {
                     state.phraseIdx++;
@@ -972,28 +979,20 @@
     function startSTTWatchdog() {
         if (state.watchdogTimer) clearInterval(state.watchdogTimer);
         state.watchdogTimer = setInterval(function() {
-            if (state.useManualInput || !state.recognition || !state.isPageVisible || state.gameOver || state.isResetting || state.isTTSPlaying) return;
+            if (state.useManualInput || !state.recognition || !state.isPageVisible || state.gameOver || state.isResetting || state.isTTSPlaying || state.softResetting) return;
+            if (Date.now() < state.ttsIgnoreUntil + 2000) return;
             if (!state.sttListening) {
                 ensureListening();
-            } else if (state.expectingSTTResult && Date.now() - state.ttsIgnoreUntil > 5000) {
-                log('STT: не услышал подсказку — перезапуск', 'warn');
-                __debugEvent('stt.missedPrompt', {});
-                try { state.recognition.stop(); } catch(e) {}
-                state.sttListening = false;
-                state.expectingSTTResult = false;
-                ensureListening();
-            } else if (Date.now() - state.sttStartedAt > 10000 && Date.now() - state.lastSTTActivity > 5000) {
-                log('STT: завис — рестарт', 'warn');
-                try { state.recognition.stop(); } catch(e) {}
-                state.sttListening = false;
-                state.expectingSTTResult = false;
-                ensureListening();
+            } else if (Date.now() - state.sttStartedAt > 20000 && Date.now() - state.lastSTTActivity > 8000) {
+                log('STT: завис — хард-резет', 'warn');
+                __debugEvent('stt.watchdogHardReset', {});
+                hardResetSTT();
             }
-        }, 1000);
+        }, 2000);
     }
 
     function ensureListening() {
-        if (!state.recognition || state.sttListening) return;
+        if (!state.recognition || state.sttListening || state.softResetting) return;
         if (state.isTTSPlaying || !state.isPageVisible || state.gameOver) return;
 
         try {
@@ -1031,9 +1030,14 @@
             state.recognition.interimResults = true;
             state.recognition.maxAlternatives = 3;
 
+            state.recognition.onaudiostart = function() {
+                state.lastSTTActivity = Date.now();
+                state.sttStartedAt = Date.now();
+            };
             state.recognition.onstart = function() {
                 state.sttListening = true;
                 state.lastSTTActivity = Date.now();
+                state.sttStartedAt = Date.now();
                 state.isResetting = false;
                 if (state.isPageVisible && !state.isTTSPlaying && Date.now() >= state.ttsIgnoreUntil) {
                     document.getElementById('mic-icon').classList.add('recording');
@@ -1043,39 +1047,19 @@
                 __debugEvent('stt.onstart', { fromReset: true });
             };
             state.recognition.onresult = function(e) {
-                const ignored = Date.now() < state.ttsIgnoreUntil;
-                const lastResult = e.results[e.results.length - 1];
-                const text = lastResult ? lastResult[0].transcript.toLowerCase().trim() : '';
-                const confidence = lastResult ? lastResult[0].confidence : 0;
-                __debugEvent('stt.onresult', { text: text, isFinal: lastResult ? lastResult.isFinal : false, confidence: confidence, ignored: ignored, resultIndex: e.resultIndex, fromReset: true });
+                state.lastSTTActivity = Date.now();
                 if (state.isTTSPlaying || !state.isPageVisible || state.gameOver) return;
                 if (Date.now() < state.ttsIgnoreUntil) return;
-                state.lastSTTActivity = Date.now();
-                log(`STT raw: "${text}" (isFinal: ${lastResult ? lastResult.isFinal : '?'})`, 'stt');
-                if (text.length < 1) return;
-                document.getElementById('mic-icon').classList.add('recording');
-                for (let i = e.results.length - 1; i > state.lastFinalResultIdx; i--) {
-                    if (e.results[i].isFinal) {
-                        const t = e.results[i][0].transcript.toLowerCase().trim();
-                        if (t.length > 0) { const c = stripTTSEcho(t); if (c.length > 0) checkReading(c); }
-                        state.lastFinalResultIdx = i;
-                        break;
-                    }
+                const text = processSTTResults(e);
+                if (text) {
+                    log(`STT: "${text}"`, 'stt');
+                    const c = stripTTSEcho(text);
+                    if (c.length > 0) checkReading(c);
                 }
-                // Chrome STT часто не финализирует короткие фразы —
-                // засчитываем последний промежуточный результат, если он новый
-                if (state.lastFinalResultIdx < e.results.length - 1 && !state.isTTSPlaying) {
-                    const last = e.results[e.results.length - 1];
-                    if (last && !last.isFinal) {
-                        const t = last[0].transcript.toLowerCase().trim();
-                        if (t.length > 0) {
-                            const c = stripTTSEcho(t);
-                            if (c.length > 0 && c !== state.lastInterimText) {
-                                checkReading(c);
-                                state.lastInterimText = c;
-                            }
-                        }
-                    }
+                if (state.sinceResetResults > 3) {
+                    log('STT: proactive reset (prevent hang)', 'watchdog');
+                    state.sinceResetResults = 0;
+                    recognitionSoftReset();
                 }
             };
             state.recognition.onerror = function(e) {
@@ -1084,18 +1068,27 @@
                 log('STT ошибка: ' + e.error, 'err');
                 if (e.error === 'no-speech' || e.error === 'aborted') {
                     state.sttListening = false;
-                    state.expectingSTTResult = false;
                     setTimeout(function() { ensureListening(); }, 300);
                 } else if (e.error === 'network') {
                     state.sttListening = false;
-                    state.expectingSTTResult = false;
                     setTimeout(function() { ensureListening(); }, 1000);
                 }
             };
             state.recognition.onend = function() {
                 state.sttListening = false;
-                state.expectingSTTResult = false;
                 state.lastFinalResultIdx = -1;
+                if (state.softResetting) {
+                    state.softResetting = false;
+                    setTimeout(function() {
+                        if (!state.isPageVisible || state.gameOver) return;
+                        state.recognition.start();
+                        state.sttStartedAt = Date.now();
+                        state.lastSTTActivity = Date.now();
+                        state.sttListening = true;
+                        log('STT: soft reset done', 'ok');
+                    }, 100);
+                    return;
+                }
                 __debugEvent('stt.onend', { wasPlaying: state.isTTSPlaying, fromReset: true });
                 if (!state.isTTSPlaying) {
                     document.getElementById('mic-icon').classList.remove('recording');
@@ -1124,70 +1117,50 @@
     // ═══════════════════════════════════════════════════════════
     //
     // 1. Chrome STT (webkitSpeechRecognition) с continuous: true
-    //    молча виснет после обработки эха собственного TTS.
-    //    onresult просто перестаёт приходить — без onerror/onend.
-    //    → watchdog с рестартом по lastSTTActivity > 5s.
+    //    молча виснет после 4-5 фраз — onresult перестаёт приходить
+    //    без onerror/onend. Баг Chromium (issues 41229480, 41166627).
+    //    → interimResults: false — каждое распознанное слово = 1 финальный
+    //    результат, а не 3-6 промежуточных. Это замедляет накопление
+    //    внутреннего счётчика Chrome до зависания.
+    //    → Проактивный soft reset в handlePhraseComplete: мёртвая зона
+    //    (~2s после start()) перекрывается похвалой «Молодец!»,
+    //    а к началу новой фразы STT уже слушает.
+    //    → watchdog форсирует hardReset если lastSTTActivity > 5s.
     //
-    // 2. После recognition.stop() + start() наступает мёртвая
-    //    зона ~2s — аудио в этот период Chrome игнорирует.
+    // 2. recognitionSoftReset(): stop() + 400ms + start() — мягкий
+    //    перезапуск без создания нового объекта Recognition.
+    //    ivanoseconds последних результатов не сбрасывается при onend,
+    //    чтобы не переоткрывать старые результаты после рестарта.
     //
-    // 3. speechSynthesis.cancel() НЕ трогает STT, но в Windows
-    //    может переключать аудиодрайвер и глушить микрофон
-    //    на 1-2 сэмпла. Достаточно, чтобы STT потерял синхронизацию.
+    // 3. continuous: false НЕ РАБОТАЕТ: после каждого start()
+    //    Chrome имеет мёртвую зону ~2s; с короткими фразами (1-2 слога)
+    //    аудио целиком падает в эту зону — STT ничего не слышит.
     //
-    // 4. speak() → cancel() триггерит onerror на текущей фразе,
-    //    и onerror вызывает тот же callback, что и onend.
-    //    Если колбэк делает phraseIdx++ — будет двойной инкремент.
-    //    → isCompleting guard в checkCompletion().
+    // 4. Эхо: TTS → stripTTSEcho() вырезает известные TTS-фразы.
+    //    ttsIgnoreUntil guard защищает от эха сразу после TTS.
     //
-    // 5. Эхо: TTS "Молодец! Отлично!" → STT слышит это обратно
-    //    → stripTTSEcho() вырезает известные TTS-фразы.
-    //    Без этого любое слово из TTS (например "мама") замкнёт
-    //    цикл и перескочит через фразу.
+    // 5. isCompleting guard в checkCompletion() защищает от
+    //    двойного инкремента phraseIdx в handlePhraseComplete.
     //
-    // 6. Chrome STT не финализирует короткие фразы (1-2 слога).
-    //    isFinal остаётся false навсегда.
-    //    → засчитываем последний промежуточный результат.
-    //    Риск: ложное срабатывание на недослушанном слове.
-    //
-    // 7. После recognition.start() Chrome сбрасывает индексы
-    //    результатов в 0. lastFinalResultIdx = -1 обязателен
-    //    в onend, иначе onresult пропустит все новые данные.
-    //
-    // 8. speechSynthesis.speak() требует пользовательского жеста.
-    //    Transient activation живет только до конца обработчика
-    //    события. Из page.evaluate() speak не сработает —
-    //    нужен OS-level TTS (PowerShell System.Speech).
-    //
-    // 9. STT хранит все результаты в e.results[] — массив растёт
-    //    бесконечно с continuous: true. При длительной игре
-    //    может просесть память (единичные случаи, не критично).
-    //
-    // 10. splitIntoSyllables() дублировал последнюю согласную
-    //     из группы: "солнце" → "солнцце" (7 букв вместо 6).
-    //     Фикс: current = '' после push слога.
-    //
-    // 11. getRecognizedChars() → normalizeLetterPronunciation()
-    //     ищет полное совпадение part в LETTER_PRONUNCIATION_MAP.
-    //     Если слог "па" не найден — разбивает на буквы ['п','а'].
-    //     Это ок для тестов, но syllable-ввод не работает.
-    //
-    // 12. Тесты стратегий чтения (слоги, эхо, ошибки) пишем
-    //     через injectSTT + manual mode — это проверяет алго-
-    //     ритм, а не аудиотракт. Аудиотракт тестируется отдельно
-    //     debug-audio.spec.ts с PowerShell TTS.
+    // 6. speechSynthesis.speak() требует пользовательского жеста.
+    //    Из page.evaluate() не сработает — нужен OS-level TTS.
     // ═══════════════════════════════════════════════════════════
 
     function initRecognition() {
         state.recognition = new SR();
         state.recognition.lang = 'ru-RU';
         state.recognition.continuous = true;
-        state.recognition.interimResults = true;
+        state.recognition.interimResults = false;
         state.recognition.maxAlternatives = 3;
 
+        state.recognition.onaudiostart = function() {
+            state.lastSTTActivity = Date.now();
+            state.sttStartedAt = Date.now();
+        };
         state.recognition.onstart = function() {
             state.sttListening = true;
             state.lastSTTActivity = Date.now();
+            state.sttStartedAt = Date.now();
             state.isResetting = false;
             if (state.isPageVisible && !state.isTTSPlaying && Date.now() >= state.ttsIgnoreUntil) {
                 document.getElementById('mic-icon').classList.add('recording');
@@ -1197,43 +1170,24 @@
             __debugEvent('stt.onstart', {});
         };
         state.recognition.onresult = function(e) {
-            const ignored = Date.now() < state.ttsIgnoreUntil;
-            const lastResult = e.results[e.results.length - 1];
-            const text = lastResult ? lastResult[0].transcript.toLowerCase().trim() : '';
-            const confidence = lastResult ? lastResult[0].confidence : 0;
-            __debugEvent('stt.onresult', { text: text, isFinal: lastResult ? lastResult.isFinal : false, confidence: confidence, ignored: ignored, resultIndex: e.resultIndex });
             state.lastSTTActivity = Date.now();
-            if (state.expectingSTTResult) {
+            if (state.expectingSTTResult && !state.isTTSPlaying) {
                 state.expectingSTTResult = false;
-                log('STT: услышал подсказку', 'ok');
+                log('STT: услышал ответ', 'ok');
             }
             if (state.isTTSPlaying || !state.isPageVisible || state.gameOver) return;
             if (Date.now() < state.ttsIgnoreUntil) return;
-            log(`STT raw: "${text}" (isFinal: ${lastResult ? lastResult.isFinal : '?'})`, 'stt');
-            if (text.length < 1) return;
-            for (let i = e.results.length - 1; i > state.lastFinalResultIdx; i--) {
-                if (e.results[i].isFinal) {
-                    const t = e.results[i][0].transcript.toLowerCase().trim();
-                    if (t.length > 0) { const c = stripTTSEcho(t); if (c.length > 0) checkReading(c); }
-                    state.lastFinalResultIdx = i;
-                    break;
-                }
-            }
-            // Chrome STT часто не финализирует короткие фразы —
-            // засчитываем последний промежуточный результат, если он новый
-            if (state.lastFinalResultIdx < e.results.length - 1 && !state.isTTSPlaying) {
-                const last = e.results[e.results.length - 1];
-                if (last && !last.isFinal) {
-                    const t = last[0].transcript.toLowerCase().trim();
-                    if (t.length > 0) {
-                        const c = stripTTSEcho(t);
-                        if (c.length > 0 && c !== state.lastInterimText) {
-                            checkReading(c);
-                            state.lastInterimText = c;
-                        }
-                    }
-                }
-            }
+            const text = processSTTResults(e);
+            if (text) {
+                log(`STT: "${text}"`, 'stt');
+                const c = stripTTSEcho(text);
+            if (c.length > 0) checkReading(c);
+        }
+        if (state.sinceResetResults > 3) {
+            log('STT: proactive reset (prevent hang)', 'watchdog');
+            state.sinceResetResults = 0;
+            recognitionSoftReset();
+        };
         };
         state.recognition.onerror = function(e) {
             __debugEvent('stt.onerror', { error: e.error, message: e.message || '' });
@@ -1241,18 +1195,26 @@
             log('STT ошибка: ' + e.error, 'err');
             if (e.error === 'no-speech' || e.error === 'aborted') {
                 state.sttListening = false;
-                state.expectingSTTResult = false;
                 setTimeout(function() { ensureListening(); }, 300);
             } else if (e.error === 'network') {
                 state.sttListening = false;
-                state.expectingSTTResult = false;
                 setTimeout(function() { ensureListening(); }, 1000);
             }
         };
         state.recognition.onend = function() {
             state.sttListening = false;
-            state.expectingSTTResult = false;
-            state.lastFinalResultIdx = -1;
+            if (state.softResetting) {
+                state.softResetting = false;
+                setTimeout(function() {
+                    if (!state.isPageVisible || state.gameOver) return;
+                    state.recognition.start();
+                    state.sttStartedAt = Date.now();
+                    state.lastSTTActivity = Date.now();
+                    state.sttListening = true;
+                    log('STT: soft reset done', 'ok');
+                }, 100);
+                return;
+            }
             __debugEvent('stt.onend', { wasPlaying: state.isTTSPlaying });
             if (!state.isTTSPlaying) {
                 document.getElementById('mic-icon').classList.remove('recording');
@@ -1264,10 +1226,41 @@
         };
         try {
             state.recognition.start();
+            state.sttStartedAt = Date.now();
+            state.lastSTTActivity = Date.now();
             log('STT инициализирован', 'stt');
         } catch(e) {
             log('start: ' + (e.message || e), 'err');
         }
+    }
+
+    function processSTTResults(e) {
+        for (let i = e.results.length - 1; i > state.lastFinalResultIdx; i--) {
+            const t = e.results[i][0].transcript.toLowerCase().trim();
+            if (t.length > 0) {
+                state.lastFinalResultIdx = i;
+                state.sinceResetResults++;
+                __debugEvent('stt.onresult', { text: t, isFinal: true, confidence: e.results[i][0].confidence, resultIndex: i });
+                return t;
+            }
+        }
+        return '';
+    }
+
+    function recognitionSoftReset() {
+        if (state.isResetting || state.softResetting) return;
+        state.softResetCount = (state.softResetCount || 0) + 1;
+        if (state.softResetCount >= 3) {
+            state.softResetCount = 0;
+            hardResetSTT();
+            return;
+        }
+        state.sinceResetResults = 0;
+        state.softResetting = true;
+        state.sttListening = false;
+        try {
+            state.recognition.stop();
+        } catch(e) {}
     }
 
     function stripTTSEcho(text) {
@@ -1504,6 +1497,12 @@
             if (unread.length > 0) unreadWords.push(unread);
         }
         return unreadWords.join(' ');
+    };
+
+    window.__debug.skipPhrase = function() {
+        speechSynthesis.cancel();
+        skipPhrase();
+        log('⏭ Пропуск фразы (тест)', 'warn');
     };
 
     log('Готово. Версия ' + VERSION + '. Нажмите "Запустить проверку".', 'info');
